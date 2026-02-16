@@ -1,5 +1,6 @@
 #!/bin/bash
 exec s6-setuidgid claude \
+    s6-env HOME=/home/claude \
     /usr/local/bin/ttyd \
     --port 7681 \
     --credential "${TTYD_USERNAME}:${TTYD_PASSWORD}" \
