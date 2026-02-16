@@ -13,6 +13,27 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: lts/*
+    - name: Build and start container
+      run: |
+        docker build -t claude-box-local .
+        docker run -d --name claude-box \
+          -p 7681:7681 \
+          -e TTYD_USERNAME=claude \
+          -e TTYD_PASSWORD=changeme \
+          claude-box-local
+    - name: Wait for container to be healthy
+      run: |
+        for i in $(seq 1 30); do
+          if curl -sf -u claude:changeme http://localhost:7681 > /dev/null 2>&1; then
+            echo "Container is ready"
+            exit 0
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 2
+        done
+        echo "Container failed to become healthy"
+        docker logs claude-box
+        exit 1
     - name: Install dependencies
       run: npm ci
     - name: Install Playwright Browsers
