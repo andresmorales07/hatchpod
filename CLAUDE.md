@@ -2,7 +2,7 @@
 
 ## Overview
 
-Claude Box is a Dockerized Claude Code environment with multi-machine access via SSH (port 2222) and a web terminal (port 7681, ttyd). It uses s6-overlay for process supervision.
+Claude Box is a Dockerized Claude Code environment with multi-machine access via SSH (port 2222) and a web terminal (port 7681, ttyd). It uses s6-overlay for process supervision and supports Docker-in-Docker via Sysbox runtime for secure container builds inside the sandbox.
 
 ## Architecture Overview
 
@@ -12,6 +12,7 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
    - `init` (oneshot) — generates SSH host keys, sets the `claude` user password, fixes volume ownership.
    - `sshd` (longrun) — OpenSSH daemon on port 2222.
    - `ttyd` (longrun) — web terminal on port 7681 (basic-auth via `TTYD_USERNAME`/`TTYD_PASSWORD`).
+   - `dockerd` (longrun) — Docker daemon for DinD (requires Sysbox runtime on host).
    - `user` (bundle) — depends on all of the above; ensures correct startup order.
 
 2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `claude` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `claude-config` volume. Node.js 20 LTS is included for MCP server support.
@@ -20,14 +21,15 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
    - `2222` — SSH access (`ssh -p 2222 claude@<host>`)
    - `7681` — ttyd web terminal (`http://<host>:7681`)
 
-Two Docker volumes persist state across container restarts:
+Three Docker volumes persist state across container restarts:
 - `claude-config` → `/home/claude/.claude`
 - `workspace` → `/home/claude/workspace`
+- `docker-data` → `/var/lib/docker` (Docker images, containers, layers)
 
 ## Project Structure
 
 ```
-├── Dockerfile              # Debian bookworm-slim, Node.js 20, s6-overlay, ttyd, Claude Code
+├── Dockerfile              # Debian bookworm-slim, Node.js 20, Docker Engine, s6-overlay, ttyd, Claude Code
 ├── docker-compose.yml      # Service definition (pulls from GHCR), volumes, env vars
 ├── Makefile                # build, up, down, logs, shell, ssh, clean
 ├── .env.example            # Template for SSH and ttyd passwords
@@ -44,7 +46,8 @@ Two Docker volumes persist state across container restarts:
                 ├── init/                # Oneshot service (runs init.sh)
                 ├── sshd/                # Long-running SSH daemon
                 ├── ttyd/                # Long-running web terminal
-                └── user/                # Bundle: init + sshd + ttyd
+                ├── dockerd/             # Long-running Docker daemon (DinD)
+                └── user/                # Bundle: init + sshd + ttyd + dockerd
 ```
 
 ## Common Commands
@@ -54,7 +57,8 @@ Two Docker volumes persist state across container restarts:
 make build    # Build the Docker image locally (for development)
 make up       # Start the container (detached, pulls from GHCR by default)
 make down     # Stop the container
-make clean    # Stop, remove volumes and image
+make clean        # Stop, remove volumes and image
+make docker-test  # Run hello-world inside the container (DinD smoke test)
 
 # Access
 make shell    # Exec into the running container as `claude` user
@@ -72,7 +76,7 @@ Users authenticate interactively by running `claude` inside the container and fo
 ## Key Conventions
 
 - Container runs as `claude` user (uid 1000) with passwordless sudo
-- Two Docker volumes: `claude-config` (~/.claude) and `workspace` (~/workspace)
+- Three Docker volumes: `claude-config` (~/.claude), `workspace` (~/workspace), and `docker-data` (/var/lib/docker)
 - s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
 - `S6_KEEP_ENV=1` ensures environment variables propagate to all services
 
@@ -102,4 +106,5 @@ Tests in `tests/ttyd.spec.ts`:
 4. **Web terminal** — open `http://localhost:7681` in a browser, authenticate with `TTYD_USERNAME`/`TTYD_PASSWORD`.
 5. **Claude Code** — run `claude` inside the container and follow the login link to authenticate.
 6. **Volume persistence** — `make down && make up`, then verify files in `~/workspace` and `~/.claude` survived the restart.
-7. **CI** — GitHub Actions runs `docker compose build` and verifies the image starts and passes its healthcheck.
+7. **Docker-in-Docker** — `make docker-test` runs `docker run hello-world` inside the container (requires Sysbox on host).
+8. **CI** — GitHub Actions runs `docker compose build` and verifies the image starts and passes its healthcheck. Note: Sysbox is not available in CI, so dockerd will not start there.

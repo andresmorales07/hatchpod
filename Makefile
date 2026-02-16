@@ -1,4 +1,4 @@
-.PHONY: build up down logs shell ssh clean
+.PHONY: build up down logs shell ssh clean docker-test
 
 build:
 	docker compose build
@@ -20,3 +20,6 @@ ssh:
 
 clean:
 	docker compose down -v --rmi local
+
+docker-test:
+	docker exec -u claude claude-box docker run --rm hello-world

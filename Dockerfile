@@ -21,6 +21,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Docker Engine (requires Sysbox runtime on host for DinD)
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+       https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install s6-overlay v3
 ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp/
 ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz /tmp/
@@ -35,7 +45,8 @@ RUN chmod +x /usr/local/bin/ttyd
 # Create non-root user
 RUN useradd -m -s /bin/bash -u 1000 claude \
     && echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude \
-    && chmod 0440 /etc/sudoers.d/claude
+    && chmod 0440 /etc/sudoers.d/claude \
+    && usermod -aG docker claude
 
 # Create volume mount points
 RUN mkdir -p /home/claude/.claude /home/claude/workspace \
@@ -53,7 +64,8 @@ COPY rootfs/ /
 # Make scripts executable
 RUN chmod +x /etc/s6-overlay/scripts/init.sh \
     && chmod +x /etc/s6-overlay/s6-rc.d/sshd/run \
-    && chmod +x /etc/s6-overlay/s6-rc.d/ttyd/run
+    && chmod +x /etc/s6-overlay/s6-rc.d/ttyd/run \
+    && chmod +x /etc/s6-overlay/s6-rc.d/dockerd/run
 
 # Set environment for Claude
 ENV S6_KEEP_ENV=1

@@ -1,26 +1,29 @@
 services:
   claude-box:
-    image: ghcr.io/andresmorales07/claude-box:1
+    image: ghcr.io/andresmorales07/claude-box:latest
     container_name: claude-box
     hostname: claude-box
+    runtime: sysbox-runc
     ports:
       - "2222:2222"
       - "7681:7681"
     volumes:
       - claude-config:/home/claude/.claude
       - workspace:/home/claude/workspace
+      - docker-data:/var/lib/docker
     environment:
       - CLAUDE_USER_PASSWORD=${CLAUDE_USER_PASSWORD:-changeme}
       - TTYD_USERNAME=${TTYD_USERNAME:-claude}
       - TTYD_PASSWORD=${TTYD_PASSWORD:-changeme}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -u \"${TTYD_USERNAME}:${TTYD_PASSWORD}\" http://localhost:7681"]
+      test: ["CMD-SHELL", "curl -f -u \"${TTYD_USERNAME}:${TTYD_PASSWORD}\" http://localhost:7681 && docker info > /dev/null 2>&1"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
 volumes:
   claude-config:
   workspace:
+  docker-data:

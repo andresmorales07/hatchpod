@@ -20,6 +20,9 @@ touch /home/claude/.claude/ssh/authorized_keys
 chmod 700 /home/claude/.claude/ssh
 chmod 600 /home/claude/.claude/ssh/authorized_keys
 
+# Ensure Docker runtime directories exist
+mkdir -p /var/run/docker
+
 # Fix ownership on mounted volumes
 chown -R claude:claude /home/claude/.claude
 chown -R claude:claude /home/claude/workspace
