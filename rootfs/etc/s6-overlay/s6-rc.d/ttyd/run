@@ -4,5 +4,6 @@ exec s6-setuidgid claude \
     /usr/local/bin/ttyd \
     -W \
     --port 7681 \
+    --cwd /home/claude/workspace \
     --credential "${TTYD_USERNAME}:${TTYD_PASSWORD}" \
     /bin/bash -l
