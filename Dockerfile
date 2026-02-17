@@ -17,7 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         xz-utils \
         bash \
         jq \
+        locales \
     && rm -rf /var/lib/apt/lists/*
+
+# Generate en_US.UTF-8 locale (required by mosh and many CLI tools)
+RUN sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen
+ENV LANG=en_US.UTF-8
 
 # Install Python 3 for MCP servers that use uvx
 RUN apt-get update && apt-get install -y --no-install-recommends \
