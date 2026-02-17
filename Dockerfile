@@ -59,8 +59,12 @@ RUN useradd -m -s /bin/bash -u 1000 claude \
     && usermod -aG docker claude
 
 # Create volume mount points
-RUN mkdir -p /home/claude/.claude /home/claude/workspace \
+RUN mkdir -p /home/claude/.claude /home/claude/workspace /home/claude/.npm-global \
     && chown -R claude:claude /home/claude
+
+# Redirect npm global prefix to a persistent volume
+RUN npm config -g set prefix /home/claude/.npm-global
+ENV PATH="/home/claude/.npm-global/bin:${PATH}"
 
 # Install Claude Code via native installer as claude user
 USER claude

@@ -11,6 +11,7 @@ services:
       - claude-config:/home/claude/.claude
       - workspace:/home/claude/workspace
       - docker-data:/var/lib/docker
+      - npm-global:/home/claude/.npm-global
     environment:
       - CLAUDE_USER_PASSWORD=${CLAUDE_USER_PASSWORD:-changeme}
       - TTYD_USERNAME=${TTYD_USERNAME:-claude}
@@ -27,3 +28,4 @@ volumes:
   claude-config:
   workspace:
   docker-data:
+  npm-global:

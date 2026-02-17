@@ -26,3 +26,4 @@ mkdir -p /var/run/docker
 # Fix ownership on mounted volumes
 chown -R claude:claude /home/claude/.claude
 chown -R claude:claude /home/claude/workspace
+chown -R claude:claude /home/claude/.npm-global
