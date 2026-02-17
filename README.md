@@ -50,6 +50,7 @@ The container comes pre-installed with:
 | **Access** | OpenSSH server | Remote access (port 2222) |
 | | ttyd | Web terminal (port 7681) |
 | | mosh | Resilient mobile shell (UDP 60000-60003) |
+| | Tailscale | VPN access (opt-in, set `TS_AUTHKEY`) |
 | **Dev tools** | git | Version control |
 | | GitHub CLI (gh) | GitHub operations |
 | | curl, jq | HTTP requests and JSON processing |
@@ -80,6 +81,21 @@ Open `http://localhost:7681` in your browser. Authenticate with `TTYD_USERNAME` 
 make shell
 ```
 
+### Tailscale VPN (Optional)
+
+Connect to your claude-box from anywhere without exposing ports publicly. Set `TS_AUTHKEY` in your `.env` to enable.
+
+1. Generate an auth key at [Tailscale Admin → Settings → Keys](https://login.tailscale.com/admin/settings/keys)
+2. Add to `.env`:
+   ```
+   TS_AUTHKEY=tskey-auth-xxxxx
+   ```
+3. Restart the container: `make down && make up`
+4. Connect via your Tailscale IP:
+   ```bash
+   ssh -p 2222 claude@<tailscale-ip>
+   ```
+
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -87,6 +103,10 @@ make shell
 | `CLAUDE_USER_PASSWORD` | SSH password for `claude` user | `changeme` |
 | `TTYD_USERNAME` | Web terminal username | `claude` |
 | `TTYD_PASSWORD` | Web terminal password | `changeme` |
+| `TS_AUTHKEY` | Tailscale auth key (enables VPN) | _(disabled)_ |
+| `TS_HOSTNAME` | Tailscale node name | `claude-box` |
+| `DOTFILES_REPO` | Git URL for dotfiles repo | _(disabled)_ |
+| `DOTFILES_BRANCH` | Branch to checkout | _(default)_ |
 
 ## Authentication
 
@@ -103,6 +123,18 @@ claude mcp add my-server -- npx some-mcp-server
 ```
 
 The configuration is stored in `~/.claude/` which is backed by a Docker volume.
+
+## Dotfiles (Optional)
+
+Automatically clone and install your dotfiles on first boot. Set `DOTFILES_REPO` in your `.env`:
+
+```
+DOTFILES_REPO=https://github.com/youruser/dotfiles.git
+```
+
+On first boot, the repo is cloned to `~/dotfiles`. If an install script (`install.sh`, `setup.sh`, or `bootstrap.sh`) is found, it runs automatically. Otherwise, if a `Makefile` is present, `make` is run.
+
+Dotfiles persist across container restarts via the `claude-home` volume.
 
 ## Volumes
 
@@ -122,6 +154,7 @@ The configuration is stored in `~/.claude/` which is backed by a Docker volume.
 | `make logs` | Follow container logs |
 | `make shell` | Open a shell in the container |
 | `make ssh` | SSH into the container |
+| `make mosh` | Connect via mosh (resilient mobile shell) |
 | `make clean` | Stop container, remove volumes and image |
 | `make docker-test` | Run hello-world inside the container (DinD smoke test) |
 
@@ -166,22 +199,22 @@ The `docker-data` volume persists pulled images and build cache across container
 ## Architecture
 
 ```
-┌──────────────────────────────────────────┐
-│     claude-box container (sysbox-runc)   │
-│                                          │
-│  ┌─────────┐  ┌──────────┐  ┌────────┐  │
-│  │  sshd   │  │   ttyd   │  │dockerd │  │
-│  │ :2222   │  │  :7681   │  │  DinD  │  │
-│  └────┬────┘  └────┬─────┘  └────┬───┘  │
-│       └──────┬──────┘─────────────┘      │
-│           Claude Code CLI                │
-│       Node.js 20 · Python 3 (MCP)       │
-│                                          │
-│  Volumes:                                │
-│   ~/.claude/     → claude-config vol     │
-│   ~/workspace/   → workspace vol         │
-│   /var/lib/docker → docker-data vol      │
-└──────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│            claude-box container (sysbox-runc)            │
+│                                                          │
+│  ┌─────────┐  ┌──────────┐  ┌────────┐  ┌───────────┐  │
+│  │  sshd   │  │   ttyd   │  │dockerd │  │tailscaled │  │
+│  │ :2222   │  │  :7681   │  │  DinD  │  │  (opt-in) │  │
+│  └────┬────┘  └────┬─────┘  └────┬───┘  └─────┬─────┘  │
+│       └──────┬─────┘─────────────┘─────────────┘        │
+│           Claude Code CLI                                │
+│       Node.js 20 · Python 3 (MCP)                       │
+│                                                          │
+│  Volumes:                                                │
+│   ~/.claude/     → claude-config vol                     │
+│   ~/workspace/   → workspace vol                         │
+│   /var/lib/docker → docker-data vol                      │
+└──────────────────────────────────────────────────────────┘
 ```
 
 Process supervision by [s6-overlay](https://github.com/just-containers/s6-overlay). Web terminal by [ttyd](https://github.com/tsl0922/ttyd).

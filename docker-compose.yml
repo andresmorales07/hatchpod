@@ -15,6 +15,10 @@ services:
       - CLAUDE_USER_PASSWORD=${CLAUDE_USER_PASSWORD:-changeme}
       - TTYD_USERNAME=${TTYD_USERNAME:-claude}
       - TTYD_PASSWORD=${TTYD_PASSWORD:-changeme}
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_HOSTNAME=${TS_HOSTNAME:-claude-box}
+      - DOTFILES_REPO=${DOTFILES_REPO:-}
+      - DOTFILES_BRANCH=${DOTFILES_BRANCH:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f -u \"${TTYD_USERNAME}:${TTYD_PASSWORD}\" http://localhost:7681 && docker info > /dev/null 2>&1"]
