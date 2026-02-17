@@ -28,27 +28,29 @@ mkdir -p /var/run/docker
 
 # Clone dotfiles repo on first boot (optional, set DOTFILES_REPO to enable)
 if [ -n "$DOTFILES_REPO" ] && [ ! -d /home/claude/dotfiles ]; then
-    DOTFILES_BRANCH_FLAG=""
+    clone_args="git clone"
     if [ -n "$DOTFILES_BRANCH" ]; then
-        DOTFILES_BRANCH_FLAG="--branch $DOTFILES_BRANCH"
+        clone_args="$clone_args --branch $(printf '%q' "$DOTFILES_BRANCH")"
     fi
+    clone_args="$clone_args $(printf '%q' "$DOTFILES_REPO") /home/claude/dotfiles"
 
-    if su - claude -c "git clone $DOTFILES_BRANCH_FLAG '$DOTFILES_REPO' /home/claude/dotfiles" 2>/dev/null; then
+    if su - claude -c "$clone_args"; then
         # Run install script if one exists
+        install_ran=false
         for script in install.sh setup.sh bootstrap.sh; do
             if [ -x "/home/claude/dotfiles/$script" ]; then
                 su - claude -c "cd /home/claude/dotfiles && ./$script"
+                install_ran=true
                 break
             fi
         done
 
         # If Makefile exists and no install script was found, run make
-        if [ ! -x "/home/claude/dotfiles/install.sh" ] && \
-           [ ! -x "/home/claude/dotfiles/setup.sh" ] && \
-           [ ! -x "/home/claude/dotfiles/bootstrap.sh" ] && \
-           [ -f "/home/claude/dotfiles/Makefile" ]; then
+        if [ "$install_ran" = false ] && [ -f "/home/claude/dotfiles/Makefile" ]; then
             su - claude -c "cd /home/claude/dotfiles && make"
         fi
+    else
+        echo "init: warning: dotfiles clone failed for $DOTFILES_REPO" >&2
     fi
 fi
 
