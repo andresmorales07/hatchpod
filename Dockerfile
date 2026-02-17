@@ -21,8 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Generate en_US.UTF-8 locale (required by mosh and many CLI tools)
+# Write to /etc/default/locale so PAM sets LANG in SSH sessions (needed by mosh-server)
 RUN sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
-    && locale-gen
+    && locale-gen \
+    && echo "LANG=en_US.UTF-8" > /etc/default/locale
 ENV LANG=en_US.UTF-8
 
 # Install Python 3 for MCP servers that use uvx
