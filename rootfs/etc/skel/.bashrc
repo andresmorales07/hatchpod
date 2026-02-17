@@ -50,6 +50,9 @@ if [ -f ~/.bash_aliases ]; then
     . ~/.bash_aliases
 fi
 
+# npm global bin (for packages installed with npm -g)
+export PATH="$HOME/.npm-global/bin:$PATH"
+
 # enable programmable completion features
 if ! shopt -oq posix; then
   if [ -f /usr/share/bash-completion/bash_completion ]; then
