@@ -8,12 +8,8 @@ services:
       - "2222:2222"
       - "7681:7681"
     volumes:
-      - claude-config:/home/claude/.claude
-      - workspace:/home/claude/workspace
+      - claude-home:/home/claude
       - docker-data:/var/lib/docker
-      - npm-global:/home/claude/.npm-global
-      - config:/home/claude/.config
-      - gnupg:/home/claude/.gnupg
     environment:
       - CLAUDE_USER_PASSWORD=${CLAUDE_USER_PASSWORD:-changeme}
       - TTYD_USERNAME=${TTYD_USERNAME:-claude}
@@ -27,9 +23,5 @@ services:
       start_period: 30s
 
 volumes:
-  claude-config:
-  workspace:
+  claude-home:
   docker-data:
-  npm-global:
-  config:
-  gnupg:

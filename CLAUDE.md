@@ -15,19 +15,15 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
    - `dockerd` (longrun) — Docker daemon for DinD (requires Sysbox runtime on host).
    - `user` (bundle) — depends on all of the above; ensures correct startup order.
 
-2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `claude` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `claude-config` volume. Node.js 20 LTS is included for MCP server support.
+2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `claude` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `claude-home` volume. Node.js 20 LTS is included for MCP server support.
 
 3. **Networking** — two exposed ports:
    - `2222` — SSH access (`ssh -p 2222 claude@<host>`)
    - `7681` — ttyd web terminal (`http://<host>:7681`)
 
-Six Docker volumes persist state across container restarts:
-- `claude-config` → `/home/claude/.claude`
-- `workspace` → `/home/claude/workspace`
+Two Docker volumes persist state across container restarts:
+- `claude-home` → `/home/claude` (Claude config, workspace, npm globals, GPG keys, etc.)
 - `docker-data` → `/var/lib/docker` (Docker images, containers, layers)
-- `npm-global` → `/home/claude/.npm-global` (globally installed npm packages)
-- `config` → `/home/claude/.config` (XDG config: gh auth, git credentials, etc.)
-- `gnupg` → `/home/claude/.gnupg` (GPG keys for commit signing)
 
 ## Project Structure
 
@@ -74,12 +70,12 @@ claude        # Launch Claude Code CLI
 
 ## Authentication
 
-Users authenticate interactively by running `claude` inside the container and following the login link. Credentials are stored in `~/.claude/` which is backed by the `claude-config` Docker volume, so they persist across container restarts.
+Users authenticate interactively by running `claude` inside the container and following the login link. Credentials are stored in `~/.claude/` which is backed by the `claude-home` Docker volume, so they persist across container restarts.
 
 ## Key Conventions
 
 - Container runs as `claude` user (uid 1000) with passwordless sudo
-- Six Docker volumes: `claude-config` (~/.claude), `workspace` (~/workspace), `docker-data` (/var/lib/docker), `npm-global` (~/.npm-global), `config` (~/.config), and `gnupg` (~/.gnupg)
+- Two Docker volumes: `claude-home` (/home/claude) and `docker-data` (/var/lib/docker)
 - s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
 - `S6_KEEP_ENV=1` ensures environment variables propagate to all services
 

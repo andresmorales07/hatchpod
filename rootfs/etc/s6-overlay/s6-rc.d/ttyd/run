@@ -4,6 +4,7 @@ exec s6-setuidgid claude \
     /usr/local/bin/ttyd \
     -W \
     --port 7681 \
+    --ping-interval 30 \
     --cwd /home/claude/workspace \
     --credential "${TTYD_USERNAME}:${TTYD_PASSWORD}" \
     -t rendererType=canvas \
