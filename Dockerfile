@@ -10,6 +10,7 @@ ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openssh-server \
         mosh \
+        tmux \
         git \
         curl \
         ca-certificates \

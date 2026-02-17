@@ -54,5 +54,12 @@ if [ -n "$DOTFILES_REPO" ] && [ ! -d /home/claude/dotfiles ]; then
     fi
 fi
 
+# Seed default dotfiles on fresh volumes (don't overwrite user customizations)
+for f in .bashrc .profile; do
+    if [ ! -f "/home/claude/$f" ] && [ -f "/etc/skel/$f" ]; then
+        cp "/etc/skel/$f" "/home/claude/$f"
+    fi
+done
+
 # Fix ownership on mounted volume
 chown -R claude:claude /home/claude
