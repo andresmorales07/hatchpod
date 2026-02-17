@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
+const username = process.env.TTYD_USERNAME || 'claude';
+const password = process.env.TTYD_PASSWORD || 'changeme';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -10,9 +13,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:7681',
     trace: 'on-first-retry',
-    httpCredentials: {
-      username: process.env.TTYD_USERNAME || 'claude',
-      password: process.env.TTYD_PASSWORD || 'changeme',
+    extraHTTPHeaders: {
+      'Authorization': `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
     },
   },
   projects: [

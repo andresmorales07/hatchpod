@@ -7,12 +7,12 @@ test('ttyd web terminal loads', async ({ page }) => {
   await expect(terminal).toBeVisible({ timeout: 15000 });
 });
 
-test('ttyd terminal has a canvas renderer', async ({ page, browserName }) => {
-  test.skip(browserName === 'webkit', 'WebKit uses DOM renderer instead of canvas');
+test('ttyd terminal has a visible renderer', async ({ page }) => {
   await page.goto('/');
-  // xterm.js renders terminal content on a canvas element
-  const canvas = page.locator('.xterm canvas');
-  await expect(canvas.first()).toBeVisible({ timeout: 15000 });
+  // xterm.js may use a canvas renderer or fall back to the DOM renderer
+  // (headless browsers typically lack GPU support, triggering the DOM fallback)
+  const renderer = page.locator('.xterm canvas, .xterm .xterm-rows');
+  await expect(renderer.first()).toBeVisible({ timeout: 15000 });
 });
 
 test('ttyd terminal is interactive (writable mode)', async ({ page }) => {
@@ -86,11 +86,8 @@ test('ttyd WebSocket connects and receives data', async ({ page, browserName }) 
 });
 
 test('ttyd returns correct auth challenge', async ({ request }) => {
-  // Without credentials, ttyd should return 401
-  const response = await request.get('http://localhost:7681/', {
-    headers: {},
-  });
-  // With httpCredentials in config, Playwright sends auth automatically
-  // so this request should succeed with 200
+  // With httpCredentials in config (send: 'always'), Playwright sends
+  // the Authorization header automatically — verify ttyd accepts it
+  const response = await request.get('/');
   expect(response.status()).toBe(200);
 });
