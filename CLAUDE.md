@@ -21,12 +21,13 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
    - `2222` — SSH access (`ssh -p 2222 claude@<host>`)
    - `7681` — ttyd web terminal (`http://<host>:7681`)
 
-Five Docker volumes persist state across container restarts:
+Six Docker volumes persist state across container restarts:
 - `claude-config` → `/home/claude/.claude`
 - `workspace` → `/home/claude/workspace`
 - `docker-data` → `/var/lib/docker` (Docker images, containers, layers)
 - `npm-global` → `/home/claude/.npm-global` (globally installed npm packages)
 - `config` → `/home/claude/.config` (XDG config: gh auth, git credentials, etc.)
+- `gnupg` → `/home/claude/.gnupg` (GPG keys for commit signing)
 
 ## Project Structure
 
@@ -78,7 +79,7 @@ Users authenticate interactively by running `claude` inside the container and fo
 ## Key Conventions
 
 - Container runs as `claude` user (uid 1000) with passwordless sudo
-- Five Docker volumes: `claude-config` (~/.claude), `workspace` (~/workspace), `docker-data` (/var/lib/docker), `npm-global` (~/.npm-global), and `config` (~/.config)
+- Six Docker volumes: `claude-config` (~/.claude), `workspace` (~/workspace), `docker-data` (/var/lib/docker), `npm-global` (~/.npm-global), `config` (~/.config), and `gnupg` (~/.gnupg)
 - s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
 - `S6_KEEP_ENV=1` ensures environment variables propagate to all services
 

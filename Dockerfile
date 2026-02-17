@@ -59,8 +59,9 @@ RUN useradd -m -s /bin/bash -u 1000 claude \
     && usermod -aG docker claude
 
 # Create volume mount points
-RUN mkdir -p /home/claude/.claude /home/claude/workspace /home/claude/.npm-global /home/claude/.config \
-    && chown -R claude:claude /home/claude
+RUN mkdir -p /home/claude/.claude /home/claude/workspace /home/claude/.npm-global /home/claude/.config /home/claude/.gnupg \
+    && chown -R claude:claude /home/claude \
+    && chmod 700 /home/claude/.gnupg
 
 # Redirect npm global prefix to a persistent volume
 RUN npm config -g set prefix /home/claude/.npm-global

@@ -28,3 +28,5 @@ chown -R claude:claude /home/claude/.claude
 chown -R claude:claude /home/claude/workspace
 chown -R claude:claude /home/claude/.npm-global
 chown -R claude:claude /home/claude/.config
+chown -R claude:claude /home/claude/.gnupg
+chmod 700 /home/claude/.gnupg
