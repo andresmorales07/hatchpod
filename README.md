@@ -55,6 +55,7 @@ The container comes pre-installed with:
 | Category | Software | Purpose |
 |----------|----------|---------|
 | **AI** | Claude Code | Anthropic's CLI agent |
+| | Web UI + API | Claude Code web interface and REST/WebSocket API (port 8080) |
 | **Runtimes** | Node.js 20 LTS | MCP servers (npx) |
 | | Python 3 + venv | MCP servers (uvx) |
 | | .NET SDK 8.0, 9.0, 10.0 | Side-by-side; selected via `global.json` |
@@ -90,6 +91,26 @@ ssh-copy-id -p 2222 claude@localhost
 ### Web Terminal (port 7681)
 
 Open `http://localhost:7681` in your browser. Authenticate with `TTYD_USERNAME` / `TTYD_PASSWORD` from your `.env`.
+
+### Web UI + API (port 8080)
+
+Mobile-friendly web interface for Claude Code. Open `http://localhost:8080` in any browser — works on phones, tablets, and desktops.
+
+```bash
+# Web UI
+open http://localhost:8080
+
+# REST API
+curl -H "Authorization: Bearer $API_PASSWORD" http://localhost:8080/api/sessions
+
+# Create a session
+curl -X POST -H "Authorization: Bearer $API_PASSWORD" \
+     -H "Content-Type: application/json" \
+     -d '{"prompt":"What files are in the workspace?"}' \
+     http://localhost:8080/api/sessions
+```
+
+API endpoints: `GET /healthz`, `POST /api/sessions`, `GET /api/sessions`, `GET /api/sessions/:id`, `DELETE /api/sessions/:id`. WebSocket streaming at `WS /api/sessions/:id/stream?token=<password>`.
 
 ### Mosh (UDP 60000-60003)
 
@@ -134,6 +155,7 @@ Connect to your claude-box from anywhere without exposing ports publicly. Set `T
 | `TS_AUTHKEY` | Tailscale auth key (enables VPN) | _(disabled)_ |
 | `TS_HOSTNAME` | Tailscale node name | `claude-box` |
 | `DOTFILES_REPO` | Git URL for dotfiles repo | _(disabled)_ |
+| `API_PASSWORD` | API server + Web UI password | `changeme` |
 | `DOTFILES_BRANCH` | Branch to checkout | _(default)_ |
 
 ## Authentication
@@ -230,11 +252,11 @@ The `docker-data` volume persists pulled images and build cache across container
 ┌──────────────────────────────────────────────────────────┐
 │            claude-box container (sysbox-runc)            │
 │                                                          │
-│  ┌─────────┐  ┌──────────┐  ┌────────┐  ┌───────────┐  │
-│  │  sshd   │  │   ttyd   │  │dockerd │  │tailscaled │  │
-│  │ :2222   │  │  :7681   │  │  DinD  │  │  (opt-in) │  │
-│  └────┬────┘  └────┬─────┘  └────┬───┘  └─────┬─────┘  │
-│       └──────┬─────┘─────────────┘─────────────┘        │
+│  ┌────────┐ ┌─────────┐ ┌───────┐ ┌──────┐ ┌──────────┐ │
+│  │  api   │ │  sshd   │ │ ttyd  │ │dockerd│ │tailscaled│ │
+│  │ :8080  │ │  :2222  │ │ :7681 │ │ DinD  │ │(opt-in)  │ │
+│  └────┬───┘ └────┬────┘ └───┬───┘ └───┬──┘ └────┬─────┘ │
+│       └──────┬───┘──────────┘─────────┘──────────┘       │
 │           Claude Code CLI                                │
 │       Node.js 20 · Python 3 (MCP)                       │
 │                                                          │

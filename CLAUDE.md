@@ -13,6 +13,7 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
    - `sshd` (longrun) — OpenSSH daemon on port 2222.
    - `ttyd` (longrun) — web terminal on port 7681 (basic-auth via `TTYD_USERNAME`/`TTYD_PASSWORD`).
    - `dockerd` (longrun) — Docker daemon for DinD (requires Sysbox runtime on host).
+   - `api` (longrun) — REST + WebSocket API server on port 8080, serves React web UI.
    - `user` (bundle) — depends on all of the above; ensures correct startup order.
 
 2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `claude` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `claude-home` volume. Node.js 20 LTS is included for MCP server support. Python 3, uv, and uvx are included for Python-based MCP servers.
@@ -20,6 +21,7 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
 3. **Networking** — three exposed ports:
    - `2222` — SSH access (`ssh -p 2222 claude@<host>`)
    - `7681` — ttyd web terminal (`http://<host>:7681`)
+   - `8080` — API server + web UI (`http://<host>:8080`)
    - `60000-60003/udp` — mosh (Mobile Shell) for resilient remote access
 
 4. **Tailscale VPN (optional)** — when `TS_AUTHKEY` is set, `tailscaled` auto-detects TUN device availability. With `/dev/net/tun` and `NET_ADMIN` (provided by `docker-compose.yml`), it uses kernel TUN mode for transparent routing — apps reach Tailscale peers without proxy config. Without TUN, it falls back to userspace networking and sets `TAILSCALE_PROXY` (not exported) in `/etc/profile.d/tailscale-proxy.sh` for opt-in use. State is persisted under `~/.tailscale/` in the `claude-home` volume.
@@ -39,6 +41,20 @@ Two Docker volumes persist state across container restarts:
 ├── playwright.config.ts    # Playwright config (baseURL: localhost:7681, Chromium only)
 ├── tests/                  # Playwright e2e tests
 │   └── ttyd.spec.ts        # ttyd web terminal tests
+├── server/                 # API server + web UI
+│   ├── package.json        # Server dependencies
+│   ├── tsconfig.json       # Server TypeScript config
+│   ├── src/                # Server source (TypeScript)
+│   │   ├── index.ts        # Entry point: HTTP + WS server
+│   │   ├── auth.ts         # Bearer token auth
+│   │   ├── sessions.ts     # Session manager + SDK integration
+│   │   ├── routes.ts       # REST route handlers
+│   │   ├── ws.ts           # WebSocket handler
+│   │   └── types.ts        # Shared TypeScript interfaces
+│   └── ui/                 # React web UI (Vite)
+│       ├── package.json    # UI dependencies
+│       ├── vite.config.ts  # Vite config (builds to ../public/)
+│       └── src/            # React components
 └── rootfs/                 # Files copied into the container at /
     └── etc/
         ├── ssh/sshd_config
@@ -139,6 +155,14 @@ Tests in `tests/ttyd.spec.ts`:
 - **ttyd WebSocket connection stays alive** — terminal remains responsive after idle period
 - **ttyd WebSocket connects and receives data** — raw WebSocket to `/ws` receives terminal payload
 - **ttyd returns correct auth challenge** — HTTP 200 with valid credentials
+
+### API server tests (`tests/api.spec.ts`)
+
+Playwright `request` API context tests verifying REST endpoints: healthz, auth, session CRUD.
+
+### Web UI tests (`tests/web-ui.spec.ts`)
+
+Playwright browser automation tests verifying login page, authentication flow.
 
 ### Manual verification
 
