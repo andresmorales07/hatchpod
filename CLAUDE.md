@@ -153,3 +153,10 @@ Tests in `tests/ttyd.spec.ts`:
 9. **CI** — GitHub Actions runs `docker compose build` and verifies the image starts and passes its healthcheck. Note: Sysbox is not available in CI, so dockerd will not start there.
 10. **Tailscale VPN** — set `TS_AUTHKEY` in `.env`, restart, verify `tailscale status` shows the node connected to the tailnet.
 11. **Dotfiles** — set `DOTFILES_REPO` in `.env`, start a fresh container (no existing `claude-home` volume), verify `~/dotfiles` is cloned and install script was run.
+
+## Agent Workflow Conventions
+
+- **Always check for relevant skills and MCP servers** before planning or implementing features. Use the `Skill` tool to invoke skills (e.g., `brainstorming` before design work, `writing-plans` before implementation, `frontend-design` for UI work, `systematic-debugging` for bug fixes).
+- **Use Context7 MCP** (`mcp__plugin_context7_context7__resolve-library-id` and `query-docs`) for up-to-date library documentation instead of relying on web searches or cached knowledge.
+- **Use Serena MCP** for semantic code exploration (symbol overview, find references) when navigating the codebase efficiently.
+- **Follow the brainstorming → writing-plans → implementation pipeline** for any non-trivial feature work. Design docs go in `docs/plans/YYYY-MM-DD-<topic>-design.md`.
