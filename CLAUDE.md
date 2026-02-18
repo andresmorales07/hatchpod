@@ -115,6 +115,8 @@ Users authenticate interactively by running `claude` inside the container and fo
 
 ## Key Conventions
 
+- Feature branches must use the `feature/<branch-name>` naming convention
+- Version tags follow SemVer with a `v` prefix: `v<major>.<minor>.<patch>`. Bump MAJOR for breaking changes, MINOR for new features, PATCH for bug fixes.
 - Container runs as `claude` user (uid 1000) with passwordless sudo
 - Two Docker volumes: `claude-home` (/home/claude) and `docker-data` (/var/lib/docker)
 - s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
