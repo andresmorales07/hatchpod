@@ -64,7 +64,7 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
 
   // Replay buffered messages
   for (const message of session.messages) {
-    const msg = { type: "sdk_message", message } satisfies ServerMessage;
+    const msg = { type: "message", message } satisfies ServerMessage;
     ws.send(JSON.stringify(msg));
   }
 
