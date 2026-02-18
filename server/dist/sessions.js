@@ -1,4 +1,4 @@
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { getProvider } from "./providers/index.js";
 import { randomUUID } from "node:crypto";
 const sessions = new Map();
 const MAX_SESSIONS = 50;
@@ -79,6 +79,7 @@ export async function createSession(req) {
     const id = randomUUID();
     const session = {
         id,
+        provider: req.provider ?? "claude",
         status: "starting",
         createdAt: new Date(),
         permissionMode: req.permissionMode ?? "default",
@@ -98,62 +99,49 @@ export async function createSession(req) {
     return session;
 }
 async function runSession(session, prompt, allowedTools, resumeSessionId) {
-    let queryHandle;
     try {
         session.status = "running";
         broadcast(session, { type: "status", status: "running" });
-        queryHandle = sdkQuery({
+        const adapter = getProvider(session.provider);
+        const generator = adapter.run({
             prompt,
-            options: {
-                abortController: session.abortController,
-                maxTurns: 50,
-                cwd: session.cwd,
-                permissionMode: session.permissionMode,
-                ...(session.permissionMode === "bypassPermissions"
-                    ? { allowDangerouslySkipPermissions: true }
-                    : {}),
-                ...(session.model ? { model: session.model } : {}),
-                ...(allowedTools?.length ? { allowedTools } : {}),
-                ...(resumeSessionId ? { resume: resumeSessionId } : {}),
-                includePartialMessages: true,
-                canUseTool: session.permissionMode === "bypassPermissions"
-                    ? undefined
-                    : async (toolName, _input, options) => {
-                        return new Promise((resolve) => {
-                            session.pendingApproval = {
-                                toolName,
-                                toolUseId: options.toolUseID,
-                                input: _input,
-                                resolve,
-                            };
-                            session.status = "waiting_for_approval";
-                            broadcast(session, {
-                                type: "status",
-                                status: "waiting_for_approval",
-                            });
-                            broadcast(session, {
-                                type: "tool_approval_request",
-                                toolName,
-                                toolUseId: options.toolUseID,
-                                input: _input,
-                            });
-                        });
-                    },
-            },
+            cwd: session.cwd,
+            permissionMode: session.permissionMode,
+            model: session.model,
+            allowedTools,
+            maxTurns: 50,
+            abortSignal: session.abortController.signal,
+            resumeSessionId,
+            onToolApproval: (request) => new Promise((resolve) => {
+                session.pendingApproval = {
+                    toolName: request.toolName,
+                    toolUseId: request.toolUseId,
+                    input: request.input,
+                    resolve,
+                };
+                session.status = "waiting_for_approval";
+                broadcast(session, {
+                    type: "status",
+                    status: "waiting_for_approval",
+                });
+                broadcast(session, {
+                    type: "tool_approval_request",
+                    toolName: request.toolName,
+                    toolUseId: request.toolUseId,
+                    input: request.input,
+                });
+            }),
         });
-        for await (const message of queryHandle) {
-            session.messages.push(message);
-            broadcast(session, { type: "sdk_message", message });
-            // Extract cost and turn info from result messages
-            if (isResultMessage(message)) {
-                session.totalCostUsd = message.total_cost_usd;
-                session.numTurns = message.num_turns;
-                // Capture the SDK session ID for resume support (stored separately
-                // so the Map key — session.id — remains the original UUID)
-                if (message.session_id) {
-                    session.sdkSessionId = message.session_id;
-                }
-            }
+        let result;
+        while (!(result = await generator.next()).done) {
+            session.messages.push(result.value);
+            broadcast(session, { type: "message", message: result.value });
+        }
+        const sessionResult = result.value;
+        session.totalCostUsd = sessionResult.totalCostUsd;
+        session.numTurns = sessionResult.numTurns;
+        if (sessionResult.providerSessionId) {
+            session.providerSessionId = sessionResult.providerSessionId;
         }
         // Status may have been mutated externally by interruptSession()
         const currentStatus = session.status;
@@ -175,9 +163,6 @@ async function runSession(session, prompt, allowedTools, resumeSessionId) {
         ...(session.lastError ? { error: session.lastError } : {}),
     });
 }
-function isResultMessage(msg) {
-    return msg.type === "result";
-}
 export function interruptSession(id) {
     const session = sessions.get(id);
     if (!session)
@@ -196,10 +181,10 @@ export function handleApproval(session, toolUseId, allow, message) {
     session.status = "running";
     broadcast(session, { type: "status", status: "running" });
     if (allow) {
-        approval.resolve({ behavior: "allow" });
+        approval.resolve({ allow: true });
     }
     else {
-        approval.resolve({ behavior: "deny", message: message ?? "Denied by user" });
+        approval.resolve({ allow: false, message: message ?? "Denied by user" });
     }
     return true;
 }
@@ -208,6 +193,6 @@ export async function sendFollowUp(session, text) {
         return false;
     }
     session.abortController = new AbortController();
-    runSession(session, text, undefined, session.sdkSessionId ?? session.id);
+    runSession(session, text, undefined, session.providerSessionId ?? session.id);
     return true;
 }

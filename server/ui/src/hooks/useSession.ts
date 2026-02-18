@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { NormalizedMessage } from "../types";
 
 type ServerMessage =
-  | { type: "sdk_message"; message: unknown }
+  | { type: "message"; message: NormalizedMessage }
   | { type: "tool_approval_request"; toolName: string; toolUseId: string; input: unknown }
   | { type: "status"; status: string; error?: string }
   | { type: "replay_complete" }
@@ -9,7 +10,7 @@ type ServerMessage =
   | { type: "error"; message: string; error?: string };
 
 interface SessionHook {
-  messages: unknown[];
+  messages: NormalizedMessage[];
   status: string;
   connected: boolean;
   pendingApproval: { toolName: string; toolUseId: string; input: unknown } | null;
@@ -23,7 +24,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 const BASE_RECONNECT_MS = 1000;
 
 export function useSession(sessionId: string | null, token: string): SessionHook {
-  const [messages, setMessages] = useState<unknown[]>([]);
+  const [messages, setMessages] = useState<NormalizedMessage[]>([]);
   const [status, setStatus] = useState("starting");
   const [connected, setConnected] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<SessionHook["pendingApproval"]>(null);
@@ -50,7 +51,7 @@ export function useSession(sessionId: string | null, token: string): SessionHook
         return;
       }
       switch (msg.type) {
-        case "sdk_message": setMessages((prev) => [...prev, msg.message]); break;
+        case "message": setMessages((prev) => [...prev, msg.message]); break;
         case "status": setStatus(msg.status); break;
         case "tool_approval_request": setPendingApproval({ toolName: msg.toolName, toolUseId: msg.toolUseId, input: msg.input }); break;
         case "replay_complete": break;

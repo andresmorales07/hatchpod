@@ -1,16 +1,17 @@
-import type { PermissionMode, PermissionResult, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { NormalizedMessage, PermissionModeCommon, ApprovalDecision } from "./providers/types.js";
 import type { WebSocket } from "ws";
 export type SessionStatus = "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error";
 export interface Session {
     id: string;
-    sdkSessionId?: string;
+    provider: string;
+    providerSessionId?: string;
     status: SessionStatus;
     createdAt: Date;
-    permissionMode: PermissionMode;
+    permissionMode: PermissionModeCommon;
     model: string | undefined;
     cwd: string;
     abortController: AbortController;
-    messages: SDKMessage[];
+    messages: NormalizedMessage[];
     totalCostUsd: number;
     numTurns: number;
     lastError: string | null;
@@ -22,13 +23,13 @@ export interface SessionDTO {
     id: string;
     status: SessionStatus;
     createdAt: string;
-    permissionMode: PermissionMode;
+    permissionMode: PermissionModeCommon;
     model: string | undefined;
     cwd: string;
     numTurns: number;
     totalCostUsd: number;
     lastError: string | null;
-    messages: SDKMessage[];
+    messages: NormalizedMessage[];
     pendingApproval: {
         toolName: string;
         toolUseId: string;
@@ -48,7 +49,7 @@ export interface PendingApproval {
     toolName: string;
     toolUseId: string;
     input: unknown;
-    resolve: (decision: PermissionResult) => void;
+    resolve: (decision: ApprovalDecision) => void;
 }
 export type ClientMessage = {
     type: "prompt";
@@ -64,8 +65,8 @@ export type ClientMessage = {
     type: "interrupt";
 };
 export type ServerMessage = {
-    type: "sdk_message";
-    message: SDKMessage;
+    type: "message";
+    message: NormalizedMessage;
 } | {
     type: "tool_approval_request";
     toolName: string;
@@ -85,7 +86,8 @@ export type ServerMessage = {
 };
 export interface CreateSessionRequest {
     prompt: string;
-    permissionMode?: PermissionMode;
+    permissionMode?: PermissionModeCommon;
+    provider?: string;
     model?: string;
     cwd?: string;
     allowedTools?: string[];

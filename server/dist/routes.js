@@ -1,7 +1,10 @@
+import { readdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized } from "./auth.js";
 import { listSessions, getSession, sessionToDTO, getSessionCount, createSession, interruptSession, } from "./sessions.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
+const BROWSE_ROOT = "/home/claude/workspace";
 function json(res, status, body) {
     const payload = JSON.stringify(body);
     res.writeHead(status, { "Content-Type": "application/json" });
@@ -107,6 +110,41 @@ export async function handleRequest(req, res) {
             return;
         }
         json(res, 200, { status: "interrupted" });
+        return;
+    }
+    // GET /api/browse — list subdirectories for folder picker
+    if (pathname === "/api/browse" && method === "GET") {
+        const relPath = url.searchParams.get("path") ?? "";
+        if (relPath.includes("\0")) {
+            json(res, 400, { error: "invalid path" });
+            return;
+        }
+        const absPath = resolve(BROWSE_ROOT, relPath);
+        if (absPath !== BROWSE_ROOT && !absPath.startsWith(BROWSE_ROOT + "/")) {
+            json(res, 400, { error: "invalid path" });
+            return;
+        }
+        try {
+            const entries = await readdir(absPath, { withFileTypes: true });
+            const dirs = entries
+                .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules")
+                .map((e) => e.name)
+                .sort((a, b) => a.localeCompare(b));
+            json(res, 200, { path: relPath, dirs });
+        }
+        catch (err) {
+            const code = err.code;
+            if (code === "ENOENT" || code === "ENOTDIR") {
+                json(res, 404, { error: "directory not found" });
+            }
+            else if (code === "EACCES") {
+                json(res, 403, { error: "permission denied" });
+            }
+            else {
+                console.error("browse error:", err);
+                json(res, 500, { error: "internal server error" });
+            }
+        }
         return;
     }
     // 404 for unknown API paths

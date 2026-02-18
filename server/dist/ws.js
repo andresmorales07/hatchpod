@@ -51,7 +51,7 @@ function setupSessionConnection(ws, sessionId) {
     session.clients.add(ws);
     // Replay buffered messages
     for (const message of session.messages) {
-        const msg = { type: "sdk_message", message };
+        const msg = { type: "message", message };
         ws.send(JSON.stringify(msg));
     }
     // Signal replay complete
