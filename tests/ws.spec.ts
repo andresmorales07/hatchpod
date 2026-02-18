@@ -128,20 +128,20 @@ test('returns error for nonexistent session', async () => {
   expect(result.message).toBe('session not found');
 });
 
-test('receives sdk_message events from active session', async () => {
+test('receives message events from active session', async () => {
   const sessionId = await createSession('What is 2+2?');
 
   // Wait a moment for the session to start producing messages
   await new Promise((r) => setTimeout(r, 2000));
 
   const ws = await connectAndAuth(sessionId);
-  const sdkMessages: unknown[] = [];
+  const normalizedMessages: unknown[] = [];
 
   await new Promise<void>((resolve) => {
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString());
-      if (msg.type === 'sdk_message') {
-        sdkMessages.push(msg.message);
+      if (msg.type === 'message') {
+        normalizedMessages.push(msg.message);
       }
     });
     // Collect messages for up to 5 seconds
@@ -150,8 +150,8 @@ test('receives sdk_message events from active session', async () => {
 
   ws.close();
 
-  // Should have received at least one sdk_message (from replay or live)
-  expect(sdkMessages.length).toBeGreaterThan(0);
+  // Should have received at least one message (from replay or live)
+  expect(normalizedMessages.length).toBeGreaterThan(0);
 });
 
 test('interrupt via WebSocket', async () => {
