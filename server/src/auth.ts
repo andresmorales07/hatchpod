@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { URL } from "node:url";
+import { timingSafeEqual } from "node:crypto";
 
 const API_PASSWORD = process.env.API_PASSWORD;
 
@@ -10,15 +11,21 @@ export function requirePassword(): void {
   }
 }
 
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 export function authenticateRequest(req: IncomingMessage): boolean {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) return false;
-  return auth.slice(7) === API_PASSWORD;
+  return safeCompare(auth.slice(7), API_PASSWORD!);
 }
 
 export function authenticateWs(url: URL): boolean {
   const token = url.searchParams.get("token");
-  return token === API_PASSWORD;
+  if (!token) return false;
+  return safeCompare(token, API_PASSWORD!);
 }
 
 export function sendUnauthorized(res: ServerResponse): void {

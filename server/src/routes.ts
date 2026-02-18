@@ -13,19 +13,9 @@ const startTime = Date.now();
 
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 
-function corsHeaders(): Record<string, string> {
-  // No CORS headers — the web UI is served from the same origin.
-  // Omitting Access-Control-Allow-Origin blocks cross-origin requests,
-  // preventing malicious websites from probing LAN instances.
-  return {};
-}
-
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    ...corsHeaders(),
-  });
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(payload);
 }
 
@@ -78,13 +68,22 @@ export async function handleRequest(
 
   // POST /api/sessions — create session
   if (pathname === "/api/sessions" && method === "POST") {
+    let parsed: CreateSessionRequest;
     try {
       const body = await readBody(req);
-      const parsed = JSON.parse(body) as CreateSessionRequest;
-      if (!parsed.prompt || typeof parsed.prompt !== "string") {
-        json(res, 400, { error: "prompt is required" });
-        return;
-      }
+      parsed = JSON.parse(body) as CreateSessionRequest;
+    } catch (err) {
+      const msg = err instanceof Error && err.message === "request body too large"
+        ? "request body too large"
+        : "invalid request body";
+      json(res, 400, { error: msg });
+      return;
+    }
+    if (!parsed.prompt || typeof parsed.prompt !== "string") {
+      json(res, 400, { error: "prompt is required" });
+      return;
+    }
+    try {
       const session = await createSession(parsed);
       json(res, 201, {
         id: session.id,
@@ -92,7 +91,8 @@ export async function handleRequest(
         createdAt: session.createdAt.toISOString(),
       });
     } catch (err) {
-      json(res, 400, { error: "invalid request body" });
+      console.error("Failed to create session:", err);
+      json(res, 500, { error: "internal server error" });
     }
     return;
   }

@@ -45,8 +45,12 @@ export function getSessionCount(): { active: number; total: number } {
 export function broadcast(session: Session, msg: ServerMessage): void {
   const data = JSON.stringify(msg);
   for (const client of session.clients) {
-    if (client.readyState === 1) {
-      client.send(data);
+    try {
+      if (client.readyState === 1) {
+        client.send(data);
+      }
+    } catch {
+      session.clients.delete(client);
     }
   }
 }
@@ -158,6 +162,7 @@ async function runSession(
     if (currentStatus !== "interrupted") {
       session.status = "error";
       session.lastError = String(err);
+      console.error(`Session ${session.id} error:`, err);
     }
   }
   broadcast(session, {
@@ -208,7 +213,11 @@ export function handleApproval(
 export async function sendFollowUp(
   session: Session,
   text: string,
-): Promise<void> {
+): Promise<boolean> {
+  if (session.status === "running" || session.status === "starting") {
+    return false;
+  }
   session.abortController = new AbortController();
   runSession(session, text, undefined, session.sdkSessionId ?? session.id);
+  return true;
 }

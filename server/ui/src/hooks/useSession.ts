@@ -21,21 +21,31 @@ interface SessionHook {
   interrupt: () => void;
 }
 
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_RECONNECT_MS = 1000;
+
 export function useSession(sessionId: string | null, token: string): SessionHook {
   const [messages, setMessages] = useState<unknown[]>([]);
   const [status, setStatus] = useState("starting");
   const [connected, setConnected] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<SessionHook["pendingApproval"]>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const reconnectAttempts = useRef(0);
 
   const connect = useCallback(() => {
     if (!sessionId || !token) return;
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${location.host}/api/sessions/${sessionId}/stream?token=${encodeURIComponent(token)}`);
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => { setConnected(true); reconnectAttempts.current = 0; };
     ws.onmessage = (event) => {
-      const msg: ServerMessage = JSON.parse(event.data);
+      let msg: ServerMessage;
+      try {
+        msg = JSON.parse(event.data);
+      } catch {
+        console.error("Malformed WebSocket message:", event.data);
+        return;
+      }
       switch (msg.type) {
         case "sdk_message": setMessages((prev) => [...prev, msg.message]); break;
         case "status": setStatus(msg.status!); break;
@@ -45,7 +55,14 @@ export function useSession(sessionId: string | null, token: string): SessionHook
         case "ping": break;
       }
     };
-    ws.onclose = () => { setConnected(false); reconnectTimer.current = setTimeout(connect, 2000); };
+    ws.onclose = () => {
+      setConnected(false);
+      if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+        const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts.current);
+        reconnectAttempts.current++;
+        reconnectTimer.current = setTimeout(connect, delay);
+      }
+    };
     ws.onerror = () => ws.close();
     wsRef.current = ws;
   }, [sessionId, token]);

@@ -9,7 +9,12 @@ export function SessionList({ token, activeSessionId, onSelectSession }: Props) 
   const [creating, setCreating] = useState(false);
 
   const fetchSessions = useCallback(async () => {
-    try { const res = await fetch("/api/sessions", { headers: { Authorization: `Bearer ${token}` } }); if (res.ok) setSessions(await res.json()); } catch {}
+    try {
+      const res = await fetch("/api/sessions", { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setSessions(await res.json());
+    } catch (err) {
+      console.error("Failed to fetch sessions:", err);
+    }
   }, [token]);
 
   useEffect(() => { fetchSessions(); const interval = setInterval(fetchSessions, 5000); return () => clearInterval(interval); }, [fetchSessions]);
@@ -21,7 +26,9 @@ export function SessionList({ token, activeSessionId, onSelectSession }: Props) 
     try {
       const res = await fetch("/api/sessions", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ prompt: prompt.trim() }) });
       if (res.ok) { const session = await res.json(); setPrompt(""); onSelectSession(session.id); fetchSessions(); }
-    } catch {} finally { setCreating(false); }
+    } catch (err) {
+      console.error("Failed to create session:", err);
+    } finally { setCreating(false); }
   };
 
   return (

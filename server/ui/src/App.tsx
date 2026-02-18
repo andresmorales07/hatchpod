@@ -44,8 +44,9 @@ function LoginPage({ token, setToken, onLogin }: { token: string; setToken: (t: 
     try {
       const res = await fetch("/api/sessions", { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) { localStorage.setItem("api_token", token); onLogin(); }
-      else { setError("Invalid password"); }
-    } catch { setError("Connection failed"); }
+      else if (res.status === 401) { setError("Invalid password"); }
+      else { setError(`Server error (${res.status})`); }
+    } catch { setError("Unable to reach server — check your connection"); }
   };
   return (
     <div className="login-page">

@@ -99,7 +99,8 @@ export function handleWsConnection(ws: WebSocket, sessionId: string): void {
     session.clients.delete(ws);
   });
 
-  ws.on("error", () => {
+  ws.on("error", (err) => {
+    console.error(`WebSocket error for session ${sessionId}:`, err.message);
     clearInterval(pingInterval);
     session.clients.delete(ws);
   });
