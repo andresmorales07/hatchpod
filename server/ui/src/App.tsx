@@ -1,0 +1,60 @@
+import { useState } from "react";
+import { SessionList } from "./components/SessionList";
+import { ChatView } from "./components/ChatView";
+import "./styles.css";
+
+export function App() {
+  const [token, setToken] = useState(() => localStorage.getItem("api_token") ?? "");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
+
+  if (!authenticated) {
+    return <LoginPage token={token} setToken={setToken} onLogin={() => setAuthenticated(true)} />;
+  }
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <button className="menu-btn" onClick={() => setShowSidebar(!showSidebar)}>
+          {showSidebar ? "\u2715" : "\u2630"}
+        </button>
+        <h1>Claude Box</h1>
+      </header>
+      <div className="app-layout">
+        <aside className={`sidebar ${showSidebar ? "open" : ""}`}>
+          <SessionList token={token} activeSessionId={activeSessionId} onSelectSession={(id) => { setActiveSessionId(id); setShowSidebar(false); }} />
+        </aside>
+        <main className="main-panel">
+          {activeSessionId ? (
+            <ChatView sessionId={activeSessionId} token={token} />
+          ) : (
+            <div className="empty-state"><p>Create a new session to get started</p></div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function LoginPage({ token, setToken, onLogin }: { token: string; setToken: (t: string) => void; onLogin: () => void }) {
+  const [error, setError] = useState("");
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/sessions", { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) { localStorage.setItem("api_token", token); onLogin(); }
+      else { setError("Invalid password"); }
+    } catch { setError("Connection failed"); }
+  };
+  return (
+    <div className="login-page">
+      <form className="login-form" onSubmit={handleSubmit}>
+        <h1>Claude Box</h1>
+        <input type="password" placeholder="API Password" value={token} onChange={(e) => setToken(e.target.value)} autoFocus />
+        <button type="submit">Connect</button>
+        {error && <p className="error">{error}</p>}
+      </form>
+    </div>
+  );
+}

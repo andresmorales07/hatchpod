@@ -10,3 +10,7 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# API server UI
+server/ui/node_modules/
+server/public/
