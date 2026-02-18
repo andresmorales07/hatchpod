@@ -1,6 +1,6 @@
 import type { NormalizedMessage, PermissionModeCommon, ApprovalDecision } from "./providers/types.js";
 import type { WebSocket } from "ws";
-export type SessionStatus = "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error";
+export type SessionStatus = "idle" | "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error";
 export interface Session {
     id: string;
     provider: string;
@@ -85,7 +85,7 @@ export type ServerMessage = {
     message: string;
 };
 export interface CreateSessionRequest {
-    prompt: string;
+    prompt?: string;
     permissionMode?: PermissionModeCommon;
     provider?: string;
     model?: string;

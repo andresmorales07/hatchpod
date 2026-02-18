@@ -9,7 +9,8 @@ setInterval(() => {
     const now = Date.now();
     for (const [id, s] of sessions) {
         const isFinished = s.status === "completed" || s.status === "error" || s.status === "interrupted";
-        if (isFinished && s.clients.size === 0 && now - s.createdAt.getTime() > SESSION_TTL_MS) {
+        const isAbandonedIdle = s.status === "idle" && s.clients.size === 0;
+        if ((isFinished || isAbandonedIdle) && s.clients.size === 0 && now - s.createdAt.getTime() > SESSION_TTL_MS) {
             sessions.delete(id);
         }
     }
@@ -76,11 +77,12 @@ export async function createSession(req) {
     if (sessions.size >= MAX_SESSIONS) {
         throw new Error(`maximum session limit reached (${MAX_SESSIONS})`);
     }
+    const hasPrompt = typeof req.prompt === "string" && req.prompt.length > 0;
     const id = randomUUID();
     const session = {
         id,
         provider: req.provider ?? "claude",
-        status: "starting",
+        status: hasPrompt ? "starting" : "idle",
         createdAt: new Date(),
         permissionMode: req.permissionMode ?? "default",
         model: req.model,
@@ -95,7 +97,9 @@ export async function createSession(req) {
     };
     sessions.set(id, session);
     // Fire and forget -- the async generator runs in the background
-    runSession(session, req.prompt, req.allowedTools);
+    if (hasPrompt) {
+        runSession(session, req.prompt, req.allowedTools);
+    }
     return session;
 }
 async function runSession(session, prompt, allowedTools, resumeSessionId) {
@@ -132,6 +136,8 @@ async function runSession(session, prompt, allowedTools, resumeSessionId) {
                 });
             }),
         });
+        // Manual iteration instead of for-await because we need the generator's
+        // return value (ProviderSessionResult with cost/turns), which for-await discards.
         let result;
         while (!(result = await generator.next()).done) {
             session.messages.push(result.value);
@@ -193,6 +199,7 @@ export async function sendFollowUp(session, text) {
         return false;
     }
     session.abortController = new AbortController();
-    runSession(session, text, undefined, session.providerSessionId ?? session.id);
+    const isFirstMessage = session.status === "idle";
+    runSession(session, text, undefined, isFirstMessage ? undefined : (session.providerSessionId ?? session.id));
     return true;
 }
