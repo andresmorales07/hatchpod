@@ -91,11 +91,16 @@ test('rejects request with missing prompt', async ({ request }) => {
 });
 
 test('rejects request with invalid JSON body', async ({ request }) => {
-  const res = await request.post('/api/sessions', {
-    headers: { 'Content-Type': 'application/json' },
-    data: 'not json{{{',
+  // Use fetch directly to send a raw string body that Playwright won't auto-serialize
+  const res = await fetch('http://localhost:8080/api/sessions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.API_PASSWORD || 'changeme'}`,
+    },
+    body: 'not json{{{',
   });
-  expect(res.status()).toBe(400);
+  expect(res.status).toBe(400);
   const body = await res.json();
   expect(body.error).toBe('invalid request body');
 });

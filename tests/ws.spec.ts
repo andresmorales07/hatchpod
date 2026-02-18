@@ -77,26 +77,33 @@ test('rejects WebSocket with wrong token', async () => {
 
 test('authenticates and receives replay + status', async () => {
   const sessionId = await createSession();
-  const ws = await connectAndAuth(sessionId);
 
+  // Collect ALL messages from the start (don't use connectAndAuth which consumes messages)
   const messages: Array<{ type: string }> = [];
 
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(wsUrl(sessionId));
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'auth', token: API_PASSWORD }));
+    });
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString());
+      if (msg.type === 'error' && msg.message === 'unauthorized') {
+        reject(new Error('Auth failed'));
+        return;
+      }
       messages.push(msg);
-      // Look for replay_complete or status messages
+      // We expect replay_complete then status — resolve once we have status
       if (msg.type === 'status') {
+        ws.close();
         resolve();
       }
     });
-    setTimeout(resolve, 5000);
+    ws.on('error', reject);
+    setTimeout(() => { ws.close(); resolve(); }, 5000);
   });
 
-  ws.close();
-
   const types = messages.map((m) => m.type);
-  // Should have received replay_complete and status at minimum
   expect(types).toContain('replay_complete');
   expect(types).toContain('status');
 });
