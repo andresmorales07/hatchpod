@@ -155,6 +155,7 @@ Note: Without Sysbox, Docker-in-Docker will not work inside the nested container
 - Tailscale and dotfiles are opt-in features controlled by env vars (`TS_AUTHKEY`, `DOTFILES_REPO`)
 - `docker-compose.yml` includes `cap_add: NET_ADMIN` and `/dev/net/tun` device for Tailscale kernel TUN mode; harmless when Tailscale is not enabled
 - The Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) must only be imported in `server/src/providers/claude-adapter.ts`. All other server and UI code uses the normalized `NormalizedMessage` / `ProviderAdapter` types from `providers/types.ts`. The WebSocket protocol sends `{ type: "message" }` events with normalized payloads.
+- `server/dist/` is tracked in git. After modifying any file under `server/src/`, rebuild with `cd server && npm run build` and commit the updated `server/dist/` files alongside the source changes.
 
 ## Testing Strategy
 
