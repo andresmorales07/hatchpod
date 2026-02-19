@@ -1,24 +1,33 @@
-# Claude Box
+<div align="center">
 
-A persistent, self-hosted Claude Code environment you can access from any machine. Run it on a server, VPS, or homelab — then connect via SSH, Mosh, web browser, or Tailscale VPN from wherever you are.
+<h1>📦 Claude Box</h1>
 
-Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/claude-code/)) that spin up for a single task and disappear, Claude Box is a **long-lived workstation**. Your files, Claude credentials, MCP servers, dotfiles, and Docker images all persist across restarts. Think of it as your personal cloud dev machine with Claude Code built in.
+<p><strong>A persistent, self-hosted Claude Code workstation you can access from anywhere.</strong></p>
+
+<p>
+  <a href="https://github.com/andresmorales07/claude-box/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/andresmorales07/claude-box/ci.yml?branch=main&label=CI&logo=github" alt="CI"></a>
+  <a href="https://github.com/andresmorales07/claude-box/releases/latest"><img src="https://img.shields.io/github/v/release/andresmorales07/claude-box?logo=github" alt="Release"></a>
+  <a href="https://github.com/andresmorales07/claude-box/pkgs/container/claude-box"><img src="https://img.shields.io/badge/ghcr.io-claude--box-blue?logo=docker" alt="Container"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/andresmorales07/claude-box" alt="License"></a>
+</p>
+
+</div>
+
+Run Claude Code on a server, VPS, or homelab — then connect via **SSH**, **web browser**, **Mosh**, or **Tailscale VPN** from wherever you are. Your files, credentials, MCP servers, dotfiles, and Docker images all persist across restarts.
+
+Think of it as your personal cloud dev machine with Claude Code built in.
 
 ## Why Claude Box?
 
-| | Ephemeral sandboxes | Claude Box |
+Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/claude-code/)) that spin up for a single task and disappear, Claude Box is a **long-lived workstation**.
+
+| | Ephemeral Sandboxes | Claude Box |
 |---|---|---|
 | **Lifecycle** | Task-scoped, disposable | Persistent — pick up where you left off |
 | **Access** | Local only | SSH, Mosh, web terminal, Tailscale VPN |
 | **Customization** | Pre-set image | Full Linux env with sudo, dotfiles, any tooling |
 | **Docker-in-Docker** | Limited or none | Full DinD via [Sysbox](https://github.com/nestybox/sysbox) |
 | **Requires** | Docker Desktop | Any Linux host with Docker Engine |
-
-**Use Claude Box when** you want a stable, remotely-accessible Claude Code environment. **Use ephemeral sandboxes when** you need fire-and-forget agent runs with strong isolation for untrusted code.
-
-## Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) (with Compose v2)
 
 ## Quick Start
 
@@ -33,13 +42,12 @@ docker compose up -d
 
 # 3. Connect
 ssh -p 2222 claude@localhost    # password is CLAUDE_USER_PASSWORD from .env
-# — or open http://localhost:7681 in a browser (TTYD_USERNAME / TTYD_PASSWORD)
 
 # 4. Authenticate Claude Code (first time only)
 claude                          # follow the login link that appears
 ```
 
-> **No Sysbox?** The default `docker-compose.yml` sets `runtime: sysbox-runc` for Docker-in-Docker. If you don't have [Sysbox](https://github.com/nestybox/sysbox) installed, create a one-line override to use the default runtime:
+> **No Sysbox?** The default `docker-compose.yml` sets `runtime: sysbox-runc` for Docker-in-Docker. If you don't have [Sysbox](https://github.com/nestybox/sysbox) installed, create a one-line override:
 >
 > ```bash
 > echo 'services: { claude-box: { runtime: runc } }' > docker-compose.override.yml
@@ -50,31 +58,29 @@ claude                          # follow the login link that appears
 
 ## What's Included
 
-The container comes pre-installed with:
-
-| Category | Software | Purpose |
-|----------|----------|---------|
-| **AI** | Claude Code | Anthropic's CLI agent |
-| | Web UI + API | Claude Code web interface and REST/WebSocket API (port 8080), provider-agnostic architecture |
-| **Runtimes** | Node.js 20 LTS | MCP servers (npx) |
-| | Python 3 + venv | MCP servers (uvx) |
-| | .NET SDK 8.0, 9.0, 10.0 | Side-by-side; selected via `global.json` |
-| **Package managers** | npm | Node packages (global prefix persisted) |
-| | uv / uvx | Python packages and tool runner |
-| **Containers** | Docker Engine + Compose | Docker-in-Docker (requires Sysbox on host) |
-| **Access** | OpenSSH server | Remote access (port 2222) |
-| | ttyd | Web terminal (port 7681) |
-| | mosh | Resilient mobile shell (UDP 60000-60003) |
-| | Tailscale | VPN access (opt-in, set `TS_AUTHKEY`) |
-| **Dev tools** | git | Version control |
-| | GitHub CLI (gh) | GitHub operations |
-| | curl, jq | HTTP requests and JSON processing |
-| **System** | s6-overlay v3 | Process supervision |
-| | sudo (passwordless) | Root access for `claude` user |
+<table>
+<tr><td><strong>Category</strong></td><td><strong>Software</strong></td><td><strong>Purpose</strong></td></tr>
+<tr><td rowspan="2">🤖 <strong>AI</strong></td><td>Claude Code</td><td>Anthropic's CLI agent</td></tr>
+<tr><td>Web UI + API</td><td>Claude Code web interface and REST/WebSocket API (port 8080)</td></tr>
+<tr><td rowspan="2">⚡ <strong>Runtimes</strong></td><td>Node.js 20 LTS</td><td>MCP servers (npx)</td></tr>
+<tr><td>Python 3 + venv</td><td>MCP servers (uvx)</td></tr>
+<tr><td rowspan="2">📦 <strong>Package Mgrs</strong></td><td>npm</td><td>Node packages (global prefix persisted)</td></tr>
+<tr><td>uv / uvx</td><td>Python packages and tool runner</td></tr>
+<tr><td>🐳 <strong>Containers</strong></td><td>Docker Engine + Compose</td><td>Docker-in-Docker (requires Sysbox on host)</td></tr>
+<tr><td rowspan="4">🌐 <strong>Access</strong></td><td>OpenSSH server</td><td>Remote access (port 2222)</td></tr>
+<tr><td>ttyd</td><td>Web terminal (port 7681)</td></tr>
+<tr><td>mosh</td><td>Resilient mobile shell (UDP 60000-60003)</td></tr>
+<tr><td>Tailscale</td><td>VPN access (opt-in, set <code>TS_AUTHKEY</code>)</td></tr>
+<tr><td rowspan="3">🔧 <strong>Dev Tools</strong></td><td>git</td><td>Version control</td></tr>
+<tr><td>GitHub CLI (gh)</td><td>GitHub operations</td></tr>
+<tr><td>curl, jq</td><td>HTTP requests and JSON processing</td></tr>
+<tr><td rowspan="2">🖥️ <strong>System</strong></td><td>s6-overlay v3</td><td>Process supervision</td></tr>
+<tr><td>sudo (passwordless)</td><td>Root access for <code>claude</code> user</td></tr>
+</table>
 
 ## Access Methods
 
-Connect from any machine — all access methods work both locally and remotely (via Tailscale or any network route to the host).
+Connect from any machine — all access methods work both locally and remotely.
 
 ### SSH (port 2222)
 
@@ -82,7 +88,7 @@ Connect from any machine — all access methods work both locally and remotely (
 ssh -p 2222 claude@localhost
 ```
 
-Use your `CLAUDE_USER_PASSWORD` to authenticate, or add your public key to the container:
+Use your `CLAUDE_USER_PASSWORD` to authenticate, or add your public key:
 
 ```bash
 ssh-copy-id -p 2222 claude@localhost
@@ -94,7 +100,7 @@ Open `http://localhost:7681` in your browser. Authenticate with `TTYD_USERNAME` 
 
 ### Web UI + API (port 8080)
 
-Mobile-friendly web interface for Claude Code. Open `http://localhost:8080` in any browser — works on phones, tablets, and desktops.
+Mobile-friendly web interface for Claude Code. Works on phones, tablets, and desktops.
 
 ```bash
 # Web UI
@@ -120,22 +126,16 @@ Resilient connection that survives WiFi switches, VPN reconnects, and laptop sle
 mosh --ssh='ssh -p 2222' claude@localhost
 ```
 
-### Direct Shell
-
-```bash
-make shell
-```
-
 ### Tailscale VPN (Optional)
 
-Connect to your claude-box from anywhere without exposing ports publicly. Set `TS_AUTHKEY` in your `.env` to enable.
+Connect from anywhere without exposing ports publicly. Set `TS_AUTHKEY` in your `.env`:
 
 1. Generate an auth key at [Tailscale Admin → Settings → Keys](https://login.tailscale.com/admin/settings/keys)
 2. Add to `.env`:
    ```
    TS_AUTHKEY=tskey-auth-xxxxx
    ```
-3. Restart the container: `make down && make up`
+3. Restart: `make down && make up`
 4. Connect via your Tailscale IP:
    ```bash
    ssh -p 2222 claude@<tailscale-ip>
@@ -143,40 +143,39 @@ Connect to your claude-box from anywhere without exposing ports publicly. Set `T
 
 **Networking mode:** The container auto-detects TUN device availability at startup:
 - **Kernel TUN mode** (default with `docker-compose.yml`): Transparent routing — all apps can reach Tailscale peers without any proxy configuration. Requires `cap_add: NET_ADMIN` and `/dev/net/tun` device (both provided in `docker-compose.yml`).
-- **Userspace fallback** (no TUN device): Apps must use the SOCKS5 proxy at `localhost:1055` explicitly. A `TAILSCALE_PROXY` variable is written to `/etc/profile.d/tailscale-proxy.sh` for convenience, but is **not exported** to avoid breaking general internet connectivity. Use per-command: `ALL_PROXY=socks5h://localhost:1055 curl http://tailscale-peer/...`
+- **Userspace fallback** (no TUN device): Apps must use the SOCKS5 proxy at `localhost:1055` explicitly. A `TAILSCALE_PROXY` variable is written to `/etc/profile.d/tailscale-proxy.sh` for convenience, but is **not exported** to avoid breaking general internet connectivity.
 
-## Environment Variables
+## Configuration
+
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CLAUDE_USER_PASSWORD` | SSH password for `claude` user | `changeme` |
 | `TTYD_USERNAME` | Web terminal username | `claude` |
 | `TTYD_PASSWORD` | Web terminal password | `changeme` |
+| `API_PASSWORD` | API server + Web UI password | `changeme` |
 | `TS_AUTHKEY` | Tailscale auth key (enables VPN) | _(disabled)_ |
 | `TS_HOSTNAME` | Tailscale node name | `claude-box` |
 | `DOTFILES_REPO` | Git URL for dotfiles repo | _(disabled)_ |
-| `API_PASSWORD` | API server + Web UI password | `changeme` |
 | `DOTFILES_BRANCH` | Branch to checkout | _(default)_ |
 
-## Authentication
+### Authentication
 
-Claude Box uses the interactive login flow. After starting the container, run `claude` and follow the login link to authenticate with your Claude account. Credentials are stored in `~/.claude/` which is backed by the `claude-config` Docker volume, so they persist across container restarts.
+Claude Box uses the interactive login flow. Run `claude` inside the container and follow the login link. Credentials are stored in `~/.claude/` which is backed by the `claude-home` Docker volume, so they persist across restarts.
 
-## MCP Server Configuration
+### MCP Servers
 
-MCP servers configured inside the container persist across restarts via the `claude-config` volume:
+MCP servers configured inside the container persist across restarts:
 
 ```bash
-# SSH in and add an MCP server
 ssh -p 2222 claude@localhost
 claude mcp add my-server -- npx some-mcp-server
 ```
 
-The configuration is stored in `~/.claude/` which is backed by a Docker volume.
+### Dotfiles (Optional)
 
-## Dotfiles (Optional)
-
-Automatically clone and install your dotfiles on first boot. Set `DOTFILES_REPO` in your `.env`:
+Set `DOTFILES_REPO` in your `.env` to automatically clone and install dotfiles on first boot:
 
 ```
 DOTFILES_REPO=https://github.com/youruser/dotfiles.git
@@ -184,55 +183,16 @@ DOTFILES_REPO=https://github.com/youruser/dotfiles.git
 
 On first boot, the repo is cloned to `~/dotfiles`. If an install script (`install.sh`, `setup.sh`, or `bootstrap.sh`) is found, it runs automatically. Otherwise, if a `Makefile` is present, `make` is run.
 
-Dotfiles persist across container restarts via the `claude-home` volume.
-
-## Volumes
+### Volumes
 
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
-| `claude-config` | `/home/claude/.claude` | Claude settings, MCP config |
-| `workspace` | `/home/claude/workspace` | Project files |
+| `claude-home` | `/home/claude` | Claude config, workspace, dotfiles, npm globals |
 | `docker-data` | `/var/lib/docker` | Docker images, containers, layers |
-
-## Make Targets
-
-| Target | Description |
-|--------|-------------|
-| `make build` | Build the Docker image |
-| `make up` | Start the container |
-| `make down` | Stop the container |
-| `make logs` | Follow container logs |
-| `make shell` | Open a shell in the container |
-| `make ssh` | SSH into the container |
-| `make mosh` | Connect via mosh (resilient mobile shell) |
-| `make clean` | Stop container, remove volumes and image |
-| `make docker-test` | Run hello-world inside the container (DinD smoke test) |
-
-## Security Notes
-
-- Change all default passwords in `.env` before exposing to a network
-- The `.env` file is excluded from git via `.gitignore`
-- SSH root login is disabled
-- For remote access, use SSH tunneling or put behind a reverse proxy with TLS
-- The `claude` user has passwordless sudo inside the container
-
-## Backup and Restore
-
-```bash
-# Backup Claude config
-docker run --rm -v claude-box_claude-config:/data -v $(pwd):/backup alpine \
-    tar czf /backup/claude-config-backup.tar.gz -C /data .
-
-# Restore
-docker run --rm -v claude-box_claude-config:/data -v $(pwd):/backup alpine \
-    tar xzf /backup/claude-config-backup.tar.gz -C /data
-```
 
 ## Docker-in-Docker
 
 Claude Box includes Docker Engine inside the container. With [Sysbox](https://github.com/nestybox/sysbox) installed on the host, agents can build and run Docker containers securely without `--privileged`.
-
-**Prerequisites:** Sysbox must be installed on the Docker host. See the [Sysbox installation guide](https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md).
 
 ```bash
 # Verify DinD works
@@ -250,7 +210,7 @@ The `docker-data` volume persists pulled images and build cache across container
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│            claude-box container (sysbox-runc)            │
+│            claude-box container (sysbox-runc)             │
 │                                                          │
 │  ┌────────┐ ┌─────────┐ ┌───────┐ ┌──────┐ ┌──────────┐ │
 │  │  api   │ │  sshd   │ │ ttyd  │ │dockerd│ │tailscaled│ │
@@ -260,14 +220,55 @@ The `docker-data` volume persists pulled images and build cache across container
 │  ┌────┴──────────┴──────────┴─────────┴──────────┘       │
 │  │  Provider Abstraction Layer (NormalizedMessage)        │
 │  │  └─ ClaudeAdapter → Claude Code CLI                   │
-│  └───────────────────────────────────────────────────┘   │
-│       Node.js 20 · Python 3 (MCP)                       │
+│  └───────────────────────────────────────────────────────┘│
+│       Node.js 20 · Python 3 · uv/uvx (MCP)              │
 │                                                          │
 │  Volumes:                                                │
-│   ~/.claude/     → claude-config vol                     │
-│   ~/workspace/   → workspace vol                         │
-│   /var/lib/docker → docker-data vol                      │
+│   /home/claude     → claude-home vol                     │
+│   /var/lib/docker  → docker-data vol                     │
 └──────────────────────────────────────────────────────────┘
 ```
 
 Process supervision by [s6-overlay](https://github.com/just-containers/s6-overlay). Web terminal by [ttyd](https://github.com/tsl0922/ttyd).
+
+## Make Targets
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build the Docker image |
+| `make up` | Start the container |
+| `make down` | Stop the container |
+| `make logs` | Follow container logs |
+| `make shell` | Open a shell in the container |
+| `make ssh` | SSH into the container |
+| `make mosh` | Connect via mosh |
+| `make clean` | Stop container, remove volumes and image |
+| `make docker-test` | Run hello-world inside the container (DinD smoke test) |
+
+## Security Notes
+
+- Change all default passwords in `.env` before exposing to a network
+- The `.env` file is excluded from git via `.gitignore`
+- SSH root login is disabled
+- For remote access, use SSH tunneling or put behind a reverse proxy with TLS
+- The `claude` user has passwordless sudo inside the container
+
+## Backup and Restore
+
+```bash
+# Backup
+docker run --rm -v claude-box_claude-home:/data -v $(pwd):/backup alpine \
+    tar czf /backup/claude-home-backup.tar.gz -C /data .
+
+# Restore
+docker run --rm -v claude-box_claude-home:/data -v $(pwd):/backup alpine \
+    tar xzf /backup/claude-home-backup.tar.gz -C /data
+```
+
+---
+
+<div align="center">
+
+<sub>Built with <a href="https://github.com/just-containers/s6-overlay">s6-overlay</a> · <a href="https://github.com/tsl0922/ttyd">ttyd</a> · <a href="https://github.com/nestybox/sysbox">Sysbox</a></sub>
+
+</div>
