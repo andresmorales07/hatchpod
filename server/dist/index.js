@@ -9,6 +9,7 @@ import { handleWsConnection, extractSessionIdFromPath } from "./ws.js";
 // Require API_PASSWORD on startup
 requirePassword();
 const PORT = parseInt(process.env.PORT ?? "8080", 10);
+const HOST = process.env.HOST ?? "0.0.0.0";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "public");
 const MIME_TYPES = {
@@ -82,6 +83,6 @@ server.on("upgrade", (req, socket, head) => {
         handleWsConnection(ws, sessionId);
     });
 });
-server.listen(PORT, () => {
-    console.log(`claude-box API server listening on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+    console.log(`claude-box API server listening on ${HOST}:${PORT}`);
 });

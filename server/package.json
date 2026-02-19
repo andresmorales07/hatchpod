@@ -1,5 +1,6 @@
 {
   "name": "TBD",
+  "private": true,
   "version": "0.1.0",
   "description": "Web UI for Claude Code — manage sessions from your browser",
   "type": "module",
