@@ -143,6 +143,18 @@ Note: Without Sysbox, Docker-in-Docker will not work inside the nested container
 - **Claude Code** — users authenticate interactively by running `claude` inside the container and following the login link. Credentials are stored in `~/.claude/` which is backed by the `claude-home` Docker volume, so they persist across container restarts.
 - **API server** — the REST API and web UI require a bearer token set via the `API_PASSWORD` environment variable. The web UI prompts for it on the login page; API clients pass it as `Authorization: Bearer <password>`.
 
+## Standalone Usage (without Docker)
+
+The `server/` directory is a publishable npm package. Users with Claude Code installed locally can run:
+
+```bash
+npx TBD --password mysecret
+```
+
+This starts the API server and web UI on `http://localhost:8080`. The `--root` flag sets the file browser root (defaults to cwd). See `npx TBD --help` for all options.
+
+The container sets `BROWSE_ROOT` and `DEFAULT_CWD` env vars explicitly to `/home/claude/workspace`. When running standalone, these default to `process.cwd()`.
+
 ## Key Conventions
 
 - Feature branches must use the `feature/<branch-name>` naming convention
