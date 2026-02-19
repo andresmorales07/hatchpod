@@ -68,6 +68,12 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
     ws.send(JSON.stringify(msg));
   }
 
+  // Replay slash commands if available
+  if (session.slashCommands.length > 0) {
+    const cmdMsg = { type: "slash_commands", commands: session.slashCommands } satisfies ServerMessage;
+    ws.send(JSON.stringify(cmdMsg));
+  }
+
   // Signal replay complete
   const replayDone = { type: "replay_complete" } satisfies ServerMessage;
   ws.send(JSON.stringify(replayDone));
