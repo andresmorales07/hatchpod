@@ -384,6 +384,64 @@ body {
   cursor: pointer;
 }
 
+/* === Slash Command Dropdown === */
+.prompt-input-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.slash-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+}
+
+.slash-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.slash-dropdown-item:hover,
+.slash-dropdown-item.active {
+  background: var(--bg-input);
+}
+
+.slash-command-name {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  font-size: 0.875rem;
+}
+
+.slash-command-desc {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.slash-command-hint {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
 /* === Prompt Input === */
 .prompt-input {
   display: flex;
