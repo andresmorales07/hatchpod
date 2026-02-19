@@ -3,20 +3,22 @@ import { useState, useEffect, useCallback } from "react";
 interface Props {
   token: string;
   cwd: string;
+  browseRoot: string;
   onCwdChange: (cwd: string) => void;
   onStartSession: (cwd: string) => void;
 }
 
-const BROWSE_ROOT = "/home/claude/workspace";
-
-export function FolderPicker({ token, cwd, onCwdChange, onStartSession }: Props) {
+export function FolderPicker({ token, cwd, browseRoot, onCwdChange, onStartSession }: Props) {
   const [open, setOpen] = useState(false);
   const [dirs, setDirs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Derive the display name from the last segment of browseRoot
+  const rootName = browseRoot.split("/").filter(Boolean).pop() ?? "root";
+
   // Relative path from browse root
-  const relPath = cwd.startsWith(BROWSE_ROOT)
-    ? cwd.slice(BROWSE_ROOT.length).replace(/^\//, "")
+  const relPath = cwd.startsWith(browseRoot)
+    ? cwd.slice(browseRoot.length).replace(/^\//, "")
     : "";
 
   const segments = relPath ? relPath.split("/") : [];
@@ -47,9 +49,11 @@ export function FolderPicker({ token, cwd, onCwdChange, onStartSession }: Props)
   }, [open, relPath, fetchDirs]);
 
   const navigateTo = (rel: string) => {
-    const newCwd = rel ? `${BROWSE_ROOT}/${rel}` : BROWSE_ROOT;
+    const newCwd = rel ? `${browseRoot}/${rel}` : browseRoot;
     onCwdChange(newCwd);
   };
+
+  if (!browseRoot) return null;
 
   return (
     <div className="folder-picker">
@@ -65,7 +69,7 @@ export function FolderPicker({ token, cwd, onCwdChange, onStartSession }: Props)
               className="breadcrumb-segment clickable"
               onClick={(e) => { e.stopPropagation(); navigateTo(""); }}
             >
-              workspace
+              {rootName}
             </span>
             {segments.map((seg, i) => (
               <span key={i}>
@@ -99,7 +103,7 @@ export function FolderPicker({ token, cwd, onCwdChange, onStartSession }: Props)
             <div className="folder-picker-empty">No subdirectories</div>
           )}
           {!loading && dirs.map((dir) => {
-            const dirCwd = relPath ? `${BROWSE_ROOT}/${relPath}/${dir}` : `${BROWSE_ROOT}/${dir}`;
+            const dirCwd = relPath ? `${browseRoot}/${relPath}/${dir}` : `${browseRoot}/${dir}`;
             return (
               <div key={dir} className="folder-picker-item-row">
                 <button

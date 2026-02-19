@@ -81,7 +81,8 @@ export function broadcast(session: Session, msg: ServerMessage): void {
       if (client.readyState === 1) {
         client.send(data);
       }
-    } catch {
+    } catch (err) {
+      console.error(`WebSocket send failed for session ${session.id}:`, err);
       session.clients.delete(client);
     }
   }

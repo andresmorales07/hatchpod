@@ -1,33 +1,33 @@
-# Claude Box - Project Guide
+# Hatchpod - Project Guide
 
 ## Overview
 
-Claude Box is a Dockerized Claude Code environment with multi-machine access via SSH (port 2222) and a web terminal (port 7681, ttyd). It uses s6-overlay for process supervision and supports Docker-in-Docker via Sysbox runtime for secure container builds inside the sandbox.
+Hatchpod is a Dockerized Claude Code environment with multi-machine access via SSH (port 2222) and a web terminal (port 7681, ttyd). It uses s6-overlay for process supervision and supports Docker-in-Docker via Sysbox runtime for secure container builds inside the sandbox.
 
 ## Architecture Overview
 
 The container is built on Debian bookworm-slim and layers in three main subsystems:
 
 1. **Process supervision (s6-overlay v3)** — the container entrypoint is `/init`, which boots the s6 service tree. Services are declared under `rootfs/etc/s6-overlay/s6-rc.d/`:
-   - `init` (oneshot) — generates SSH host keys, sets the `claude` user password, fixes volume ownership.
+   - `init` (oneshot) — generates SSH host keys, sets the `hatchpod` user password, fixes volume ownership.
    - `sshd` (longrun) — OpenSSH daemon on port 2222.
    - `ttyd` (longrun) — web terminal on port 7681 (basic-auth via `TTYD_USERNAME`/`TTYD_PASSWORD`).
    - `dockerd` (longrun) — Docker daemon for DinD (requires Sysbox runtime on host).
    - `api` (longrun) — REST + WebSocket API server on port 8080, serves React web UI. Uses a provider abstraction layer (`server/src/providers/`) so the SDK is isolated behind a `ProviderAdapter` interface — only `claude-adapter.ts` imports from `@anthropic-ai/claude-agent-sdk`.
    - `user` (bundle) — depends on all of the above; ensures correct startup order.
 
-2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `claude` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `claude-home` volume. Node.js 20 LTS is included for MCP server support. Python 3, uv, and uvx are included for Python-based MCP servers.
+2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `hatchpod` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `home` volume. Node.js 20 LTS is included for MCP server support. Python 3, uv, and uvx are included for Python-based MCP servers.
 
 3. **Networking** — four exposed ports:
-   - `2222` — SSH access (`ssh -p 2222 claude@<host>`)
+   - `2222` — SSH access (`ssh -p 2222 hatchpod@<host>`)
    - `7681` — ttyd web terminal (`http://<host>:7681`)
    - `8080` — API server + web UI (`http://<host>:8080`)
    - `60000-60003/udp` — mosh (Mobile Shell) for resilient remote access
 
-4. **Tailscale VPN (optional)** — when `TS_AUTHKEY` is set, `tailscaled` auto-detects TUN device availability. With `/dev/net/tun` and `NET_ADMIN` (provided by `docker-compose.yml`), it uses kernel TUN mode for transparent routing — apps reach Tailscale peers without proxy config. Without TUN, it falls back to userspace networking and sets `TAILSCALE_PROXY` (not exported) in `/etc/profile.d/tailscale-proxy.sh` for opt-in use. State is persisted under `~/.tailscale/` in the `claude-home` volume.
+4. **Tailscale VPN (optional)** — when `TS_AUTHKEY` is set, `tailscaled` auto-detects TUN device availability. With `/dev/net/tun` and `NET_ADMIN` (provided by `docker-compose.yml`), it uses kernel TUN mode for transparent routing — apps reach Tailscale peers without proxy config. Without TUN, it falls back to userspace networking and sets `TAILSCALE_PROXY` (not exported) in `/etc/profile.d/tailscale-proxy.sh` for opt-in use. State is persisted under `~/.tailscale/` in the `home` volume.
 
 Two Docker volumes persist state across container restarts:
-- `claude-home` → `/home/claude` (Claude config, workspace, npm globals, GPG keys, etc.)
+- `home` → `/home/hatchpod` (Claude config, workspace, npm globals, GPG keys, etc.)
 - `docker-data` → `/var/lib/docker` (Docker images, containers, layers)
 
 ## Project Structure
@@ -111,7 +111,7 @@ make clean        # Stop, remove volumes and image
 make docker-test  # Run hello-world inside the container (DinD smoke test)
 
 # Access
-make shell    # Exec into the running container as `claude` user
+make shell    # Exec into the running container as `hatchpod` user
 make ssh      # SSH into the container (port 2222)
 make mosh     # Connect via mosh (resilient mobile shell, port 2222 + UDP 60000-60003)
 make logs     # Tail container logs (s6 + services)
@@ -122,7 +122,7 @@ claude        # Launch Claude Code CLI
 
 ## Sysbox Runtime Detection
 
-The `docker-compose.yml` specifies `runtime: sysbox-runc`, which is only available on the Docker host — not inside a Sysbox container. When building or running claude-box from inside an existing Sysbox container (i.e., when Claude Code is running inside claude-box itself), you must override the runtime to avoid `unknown or invalid runtime name` errors:
+The `docker-compose.yml` specifies `runtime: sysbox-runc`, which is only available on the Docker host — not inside a Sysbox container. When building or running hatchpod from inside an existing Sysbox container (i.e., when Claude Code is running inside hatchpod itself), you must override the runtime to avoid `unknown or invalid runtime name` errors:
 
 ```bash
 # Check if running inside a Sysbox container (sysboxfs FUSE mounts are the reliable indicator)
@@ -140,7 +140,7 @@ Note: Without Sysbox, Docker-in-Docker will not work inside the nested container
 
 ## Authentication
 
-- **Claude Code** — users authenticate interactively by running `claude` inside the container and following the login link. Credentials are stored in `~/.claude/` which is backed by the `claude-home` Docker volume, so they persist across container restarts.
+- **Claude Code** — users authenticate interactively by running `claude` inside the container and following the login link. Credentials are stored in `~/.claude/` which is backed by the `home` Docker volume, so they persist across container restarts.
 - **API server** — the REST API and web UI require a bearer token set via the `API_PASSWORD` environment variable. The web UI prompts for it on the login page; API clients pass it as `Authorization: Bearer <password>`.
 
 ## Standalone Usage (without Docker)
@@ -148,19 +148,19 @@ Note: Without Sysbox, Docker-in-Docker will not work inside the nested container
 The `server/` directory is a publishable npm package. Users with Claude Code installed locally can run:
 
 ```bash
-npx TBD --password mysecret
+npx hatchpod-api --password mysecret
 ```
 
-This starts the API server and web UI on `http://localhost:8080`. The `--root` flag sets the file browser root (defaults to cwd). See `npx TBD --help` for all options.
+This starts the API server and web UI on `http://localhost:8080`. The `--root` flag sets the file browser root (defaults to cwd). See `npx hatchpod-api --help` for all options.
 
-The container sets `BROWSE_ROOT` and `DEFAULT_CWD` env vars explicitly to `/home/claude/workspace`. When running standalone, these default to `process.cwd()`.
+The container sets `BROWSE_ROOT` and `DEFAULT_CWD` env vars explicitly to `/home/hatchpod/workspace`. When running standalone, these default to `process.cwd()`.
 
 ## Key Conventions
 
 - Feature branches must use the `feature/<branch-name>` naming convention
 - Version tags follow SemVer with a `v` prefix: `v<major>.<minor>.<patch>`. Bump MAJOR for breaking changes, MINOR for new features, PATCH for bug fixes.
-- Container runs as `claude` user (uid 1000) with passwordless sudo
-- Two Docker volumes: `claude-home` (/home/claude) and `docker-data` (/var/lib/docker)
+- Container runs as `hatchpod` user (uid 1000) with passwordless sudo
+- Two Docker volumes: `home` (/home/hatchpod) and `docker-data` (/var/lib/docker)
 - s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
 - `S6_KEEP_ENV=1` ensures environment variables propagate to all services
 - When adding or removing software from the Dockerfile, update the "What's Included" table in README.md to match
@@ -185,20 +185,20 @@ Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket c
 
 ```bash
 # 1. Build and run the container
-docker build -t claude-box:latest .
-docker run -d --name claude-box-test \
+docker build -t hatchpod:latest .
+docker run -d --name hatchpod-test \
   -p 7681:7681 -p 2222:2222 -p 8080:8080 \
-  -e TTYD_USERNAME=claude \
+  -e TTYD_USERNAME=hatchpod \
   -e TTYD_PASSWORD=changeme \
   -e API_PASSWORD=changeme \
-  claude-box:latest
+  hatchpod:latest
 
 # 2. Run tests (credentials must match the container's env vars)
 npm install
 npx playwright test
 
 # 3. Clean up
-docker rm -f claude-box-test
+docker rm -f hatchpod-test
 ```
 
 ### Test files
@@ -213,15 +213,15 @@ docker rm -f claude-box-test
 
 1. **Build** — `make build` must complete without errors.
 2. **Startup** — `make up` then `docker compose ps` should show the container as healthy (healthcheck curls `http://localhost:7681`).
-3. **SSH access** — `make ssh` (or `ssh -p 2222 claude@localhost`) should connect and drop into a bash shell.
-4. **Mosh access** — `make mosh` (or `mosh --ssh='ssh -p 2222' claude@localhost`) should connect and drop into a bash shell. Verify the session survives a brief network interruption (e.g., sleep/wake laptop).
+3. **SSH access** — `make ssh` (or `ssh -p 2222 hatchpod@localhost`) should connect and drop into a bash shell.
+4. **Mosh access** — `make mosh` (or `mosh --ssh='ssh -p 2222' hatchpod@localhost`) should connect and drop into a bash shell. Verify the session survives a brief network interruption (e.g., sleep/wake laptop).
 5. **Web terminal** — open `http://localhost:7681` in a browser, authenticate with `TTYD_USERNAME`/`TTYD_PASSWORD`.
 6. **Claude Code** — run `claude` inside the container and follow the login link to authenticate.
 7. **Volume persistence** — `make down && make up`, then verify files in `~/workspace` and `~/.claude` survived the restart.
 8. **Docker-in-Docker** — `make docker-test` runs `docker run hello-world` inside the container (requires Sysbox on host).
 9. **CI** — GitHub Actions runs `docker compose build` and verifies the image starts and passes its healthcheck. Note: Sysbox is not available in CI, so dockerd will not start there.
 10. **Tailscale VPN** — set `TS_AUTHKEY` in `.env`, restart, verify `tailscale status` shows the node connected to the tailnet.
-11. **Dotfiles** — set `DOTFILES_REPO` in `.env`, start a fresh container (no existing `claude-home` volume), verify `~/dotfiles` is cloned and install script was run.
+11. **Dotfiles** — set `DOTFILES_REPO` in `.env`, start a fresh container (no existing `home` volume), verify `~/dotfiles` is cloned and install script was run.
 
 ## Agent Workflow Conventions
 

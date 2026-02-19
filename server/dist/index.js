@@ -35,7 +35,10 @@ async function serveStatic(pathname) {
         const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
         return { data, contentType };
     }
-    catch {
+    catch (err) {
+        if (err.code !== "ENOENT") {
+            console.error(`Static file error for ${filePath}:`, err);
+        }
         return null;
     }
 }
@@ -84,5 +87,5 @@ server.on("upgrade", (req, socket, head) => {
     });
 });
 server.listen(PORT, HOST, () => {
-    console.log(`claude-box API server listening on ${HOST}:${PORT}`);
+    console.log(`hatchpod API server listening on ${HOST}:${PORT}`);
 });

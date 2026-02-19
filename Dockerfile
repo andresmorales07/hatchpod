@@ -97,20 +97,20 @@ ADD https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_6
 RUN chmod +x /usr/local/bin/ttyd
 
 # Create non-root user
-RUN useradd -m -s /bin/bash -u 1000 claude \
-    && echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude \
-    && chmod 0440 /etc/sudoers.d/claude \
-    && usermod -aG docker claude
+RUN useradd -m -s /bin/bash -u 1000 hatchpod \
+    && echo "hatchpod ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/hatchpod \
+    && chmod 0440 /etc/sudoers.d/hatchpod \
+    && usermod -aG docker hatchpod
 
 # Redirect npm global prefix to a persistent location
-RUN npm config -g set prefix /home/claude/.npm-global
-ENV PATH="/home/claude/.npm-global/bin:${PATH}"
+RUN npm config -g set prefix /home/hatchpod/.npm-global
+ENV PATH="/home/hatchpod/.npm-global/bin:${PATH}"
 
-# Install Claude Code via native installer as claude user
-USER claude
+# Install Claude Code via native installer as hatchpod user
+USER hatchpod
 RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
-RUN ln -sf /home/claude/.local/bin/claude /usr/local/bin/claude
+RUN ln -sf /home/hatchpod/.local/bin/claude /usr/local/bin/claude
 
 # Copy s6 service definitions and configs
 COPY rootfs/ /
@@ -148,7 +148,7 @@ RUN chmod +x /etc/s6-overlay/scripts/init.sh \
 # Set environment for Claude
 ENV S6_KEEP_ENV=1
 ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
-ENV CLAUDE_CONFIG_DIR=/home/claude/.claude
+ENV CLAUDE_CONFIG_DIR=/home/hatchpod/.claude
 
 EXPOSE 2222 7681 8080 60000-60003/udp
 

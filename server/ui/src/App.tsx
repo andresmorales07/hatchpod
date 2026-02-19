@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { SessionList } from "./components/SessionList";
 import { ChatView } from "./components/ChatView";
 import { FolderPicker } from "./components/FolderPicker";
@@ -9,7 +9,22 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [cwd, setCwd] = useState("/home/claude/workspace");
+  const [cwd, setCwd] = useState("");
+  const [browseRoot, setBrowseRoot] = useState("");
+
+  // Fetch server config after authentication to get the actual browse root
+  useEffect(() => {
+    if (!authenticated) return;
+    fetch("/api/config", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.ok ? res.json() : null)
+      .then((config) => {
+        if (config?.browseRoot) {
+          setBrowseRoot(config.browseRoot);
+          if (!cwd) setCwd(config.defaultCwd ?? config.browseRoot);
+        }
+      })
+      .catch(() => {});
+  }, [authenticated, token]);
 
   const startSession = useCallback(async (sessionCwd: string) => {
     try {
@@ -38,11 +53,11 @@ export function App() {
         <button className="menu-btn" onClick={() => setShowSidebar(!showSidebar)}>
           {showSidebar ? "\u2715" : "\u2630"}
         </button>
-        <h1>Claude Box</h1>
+        <h1>Hatchpod</h1>
       </header>
       <div className="app-layout">
         <aside className={`sidebar ${showSidebar ? "open" : ""}`}>
-          <FolderPicker token={token} cwd={cwd} onCwdChange={setCwd} onStartSession={startSession} />
+          <FolderPicker token={token} cwd={cwd} browseRoot={browseRoot} onCwdChange={setCwd} onStartSession={startSession} />
           <SessionList token={token} cwd={cwd} activeSessionId={activeSessionId} onSelectSession={(id) => { setActiveSessionId(id); setShowSidebar(false); }} />
         </aside>
         <main className="main-panel">
@@ -71,7 +86,7 @@ function LoginPage({ token, setToken, onLogin }: { token: string; setToken: (t: 
   return (
     <div className="login-page">
       <form className="login-form" onSubmit={handleSubmit}>
-        <h1>Claude Box</h1>
+        <h1>Hatchpod</h1>
         <input type="password" placeholder="API Password" value={token} onChange={(e) => setToken(e.target.value)} autoFocus />
         <button type="submit">Connect</button>
         {error && <p className="error">{error}</p>}

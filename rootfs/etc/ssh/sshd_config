@@ -2,7 +2,7 @@ Port 2222
 PermitRootLogin no
 PasswordAuthentication yes
 PubkeyAuthentication yes
-AuthorizedKeysFile /home/claude/.claude/ssh/authorized_keys
+AuthorizedKeysFile %h/.claude/ssh/authorized_keys
 ChallengeResponseAuthentication no
 UsePAM yes
 X11Forwarding no

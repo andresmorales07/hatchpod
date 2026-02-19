@@ -24,7 +24,7 @@ fi
 # so that sshd, ttyd, and dockerd keep running.
 if ! tailscale up \
     --authkey="$TS_AUTHKEY" \
-    --hostname="${TS_HOSTNAME:-claude-box}" \
+    --hostname="${TS_HOSTNAME:-hatchpod}" \
     --ssh=false \
     --accept-dns=false; then
     echo "tailscaled-up: tailscale up failed (check TS_AUTHKEY)" >&2

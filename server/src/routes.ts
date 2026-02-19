@@ -136,6 +136,13 @@ export async function handleRequest(
     return;
   }
 
+  // GET /api/config — server configuration for the UI
+  if (pathname === "/api/config" && method === "GET") {
+    const defaultCwd = process.env.DEFAULT_CWD ?? process.cwd();
+    json(res, 200, { browseRoot: BROWSE_ROOT, defaultCwd });
+    return;
+  }
+
   // GET /api/browse — list subdirectories for folder picker
   if (pathname === "/api/browse" && method === "GET") {
     const relPath = url.searchParams.get("path") ?? "";

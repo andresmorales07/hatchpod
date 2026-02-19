@@ -22,7 +22,7 @@ for (let i = 0; i < args.length; i++) {
   } else if (arg === "--no-open") {
     flags.noOpen = true;
   } else if (arg === "--help" || arg === "-h") {
-    console.log(`Usage: claude-box-ui [options]
+    console.log(`Usage: hatchpod-api [options]
 
 Options:
   --port <number>     Port to listen on (default: 8080, env: PORT)

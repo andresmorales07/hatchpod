@@ -1,8 +1,8 @@
 services:
-  claude-box:
-    image: ghcr.io/andresmorales07/claude-box:latest
-    container_name: claude-box
-    hostname: claude-box
+  hatchpod:
+    image: ghcr.io/andresmorales07/hatchpod:latest
+    container_name: hatchpod
+    hostname: hatchpod
     runtime: sysbox-runc
     cap_add:
       - NET_ADMIN
@@ -14,14 +14,14 @@ services:
       - "8080:8080"
       - "60000-60003:60000-60003/udp"
     volumes:
-      - claude-home:/home/claude
+      - home:/home/hatchpod
       - docker-data:/var/lib/docker
     environment:
-      - CLAUDE_USER_PASSWORD=${CLAUDE_USER_PASSWORD:-changeme}
-      - TTYD_USERNAME=${TTYD_USERNAME:-claude}
+      - SSH_PASSWORD=${SSH_PASSWORD:-${CLAUDE_USER_PASSWORD:-changeme}}
+      - TTYD_USERNAME=${TTYD_USERNAME:-hatchpod}
       - TTYD_PASSWORD=${TTYD_PASSWORD:-changeme}
       - TS_AUTHKEY=${TS_AUTHKEY:-}
-      - TS_HOSTNAME=${TS_HOSTNAME:-claude-box}
+      - TS_HOSTNAME=${TS_HOSTNAME:-hatchpod}
       - DOTFILES_REPO=${DOTFILES_REPO:-}
       - API_PASSWORD=${API_PASSWORD:-changeme}
       - DOTFILES_BRANCH=${DOTFILES_BRANCH:-}
@@ -34,5 +34,5 @@ services:
       start_period: 30s
 
 volumes:
-  claude-home:
+  home:
   docker-data:

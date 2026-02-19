@@ -32,7 +32,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/andresmorales07/claude-box
+          images: ghcr.io/andresmorales07/hatchpod
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -51,4 +51,4 @@ jobs:
           load: ${{ github.event_name == 'pull_request' || !startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Verify image
-        run: docker run --rm --entrypoint claude ghcr.io/andresmorales07/claude-box:sha-${GITHUB_SHA::7} --version
+        run: docker run --rm --entrypoint claude ghcr.io/andresmorales07/hatchpod:sha-${GITHUB_SHA::7} --version

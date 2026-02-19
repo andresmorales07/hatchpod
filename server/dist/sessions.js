@@ -69,7 +69,8 @@ export function broadcast(session, msg) {
                 client.send(data);
             }
         }
-        catch {
+        catch (err) {
+            console.error(`WebSocket send failed for session ${session.id}:`, err);
             session.clients.delete(client);
         }
     }
