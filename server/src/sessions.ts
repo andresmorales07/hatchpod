@@ -104,6 +104,7 @@ export async function createSession(
     cwd: req.cwd ?? "/home/claude/workspace",
     abortController: new AbortController(),
     messages: [],
+    slashCommands: [],
     totalCostUsd: 0,
     numTurns: 0,
     lastError: null,
@@ -164,6 +165,12 @@ async function runSession(
     // return value (ProviderSessionResult with cost/turns), which for-await discards.
     let result: IteratorResult<NormalizedMessage, ProviderSessionResult>;
     while (!(result = await generator.next()).done) {
+      // Intercept system_init messages — store slash commands, broadcast separately
+      if (result.value.role === "system" && "event" in result.value && result.value.event.type === "system_init") {
+        session.slashCommands = result.value.event.slashCommands;
+        broadcast(session, { type: "slash_commands", commands: session.slashCommands });
+        continue;
+      }
       session.messages.push(result.value);
       broadcast(session, { type: "message", message: result.value });
     }
