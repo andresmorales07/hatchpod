@@ -1,4 +1,6 @@
 #!/bin/bash
 exec s6-setuidgid claude \
     s6-env HOME=/home/claude \
+    s6-env BROWSE_ROOT=/home/claude/workspace \
+    s6-env DEFAULT_CWD=/home/claude/workspace \
     node /opt/api-server/dist/index.js
