@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { NormalizedMessage } from "../types";
+import type { NormalizedMessage, SlashCommand } from "../types";
 
 type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
   | { type: "tool_approval_request"; toolName: string; toolUseId: string; input: unknown }
   | { type: "status"; status: string; error?: string }
+  | { type: "slash_commands"; commands: SlashCommand[] }
   | { type: "replay_complete" }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
 interface SessionHook {
   messages: NormalizedMessage[];
+  slashCommands: SlashCommand[];
   status: string;
   connected: boolean;
   pendingApproval: { toolName: string; toolUseId: string; input: unknown } | null;
@@ -28,6 +30,7 @@ export function useSession(sessionId: string | null, token: string): SessionHook
   const [status, setStatus] = useState("starting");
   const [connected, setConnected] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<SessionHook["pendingApproval"]>(null);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const reconnectAttempts = useRef(0);
@@ -54,6 +57,7 @@ export function useSession(sessionId: string | null, token: string): SessionHook
         case "message": setMessages((prev) => [...prev, msg.message]); break;
         case "status": setStatus(msg.status); break;
         case "tool_approval_request": setPendingApproval({ toolName: msg.toolName, toolUseId: msg.toolUseId, input: msg.input }); break;
+        case "slash_commands": setSlashCommands(msg.commands); break;
         case "replay_complete": break;
         case "error": console.error("Server error:", msg.message); break;
         case "ping": break;
@@ -72,7 +76,7 @@ export function useSession(sessionId: string | null, token: string): SessionHook
   }, [sessionId, token]);
 
   useEffect(() => {
-    setMessages([]); setStatus("starting"); setPendingApproval(null);
+    setMessages([]); setStatus("starting"); setPendingApproval(null); setSlashCommands([]);
     connect();
     return () => { clearTimeout(reconnectTimer.current); wsRef.current?.close(); };
   }, [connect]);
@@ -82,7 +86,7 @@ export function useSession(sessionId: string | null, token: string): SessionHook
   }, []);
 
   return {
-    messages, status, connected, pendingApproval,
+    messages, slashCommands, status, connected, pendingApproval,
     sendPrompt: (text: string) => send({ type: "prompt", text }),
     approve: (toolUseId: string) => { send({ type: "approve", toolUseId }); setPendingApproval(null); },
     deny: (toolUseId: string, message?: string) => { send({ type: "deny", toolUseId, message }); setPendingApproval(null); },

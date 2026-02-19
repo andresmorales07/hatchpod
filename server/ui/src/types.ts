@@ -17,3 +17,10 @@ export interface SystemEvent {
   index: number;
 }
 export type NormalizedMessage = UserMessage | AssistantMessage | SystemEvent;
+
+// Slash commands
+export interface SlashCommand {
+  name: string;
+  description: string;
+  argumentHint?: string;
+}
