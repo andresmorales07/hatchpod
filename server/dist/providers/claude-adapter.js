@@ -79,6 +79,19 @@ function normalizeResult(msg, index) {
         index,
     };
 }
+function normalizeSystem(msg, index) {
+    if (msg.subtype !== "init")
+        return null;
+    const slashCommands = (msg.slash_commands ?? []).map((name) => ({
+        name,
+        description: "",
+    }));
+    return {
+        role: "system",
+        event: { type: "system_init", slashCommands },
+        index,
+    };
+}
 function normalizeMessage(msg, index) {
     switch (msg.type) {
         case "assistant":
@@ -87,6 +100,8 @@ function normalizeMessage(msg, index) {
             return normalizeUser(msg, index);
         case "result":
             return normalizeResult(msg, index);
+        case "system":
+            return normalizeSystem(msg, index);
         default:
             return null;
     }
@@ -142,6 +157,12 @@ export class ClaudeAdapter {
                         },
                 },
             });
+            // Eagerly fetch enriched slash commands (with descriptions)
+            const enrichedCommandsPromise = queryHandle.supportedCommands().then((sdkCommands) => sdkCommands.map((cmd) => ({
+                name: cmd.name,
+                description: cmd.description,
+                argumentHint: cmd.argumentHint || undefined,
+            })), () => null);
             for await (const sdkMessage of queryHandle) {
                 // Capture result data before normalizing
                 if (sdkMessage.type === "result") {
@@ -157,6 +178,15 @@ export class ClaudeAdapter {
                     messageIndex++;
                     yield normalized;
                 }
+            }
+            // Yield enriched slash commands if available
+            const enrichedCommands = await enrichedCommandsPromise;
+            if (enrichedCommands && enrichedCommands.length > 0) {
+                yield {
+                    role: "system",
+                    event: { type: "system_init", slashCommands: enrichedCommands },
+                    index: messageIndex++,
+                };
             }
         }
         finally {

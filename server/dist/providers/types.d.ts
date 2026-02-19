@@ -24,6 +24,11 @@ export interface ErrorPart {
     code?: string;
 }
 export type MessagePart = TextPart | ToolUsePart | ToolResultPart | ReasoningPart | ErrorPart;
+export interface SlashCommand {
+    name: string;
+    description: string;
+    argumentHint?: string;
+}
 export interface UserMessage {
     role: "user";
     parts: MessagePart[];
@@ -43,6 +48,9 @@ export interface SystemEvent {
     } | {
         type: "status";
         status: string;
+    } | {
+        type: "system_init";
+        slashCommands: SlashCommand[];
     };
     index: number;
 }

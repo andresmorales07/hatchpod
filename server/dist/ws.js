@@ -54,6 +54,11 @@ function setupSessionConnection(ws, sessionId) {
         const msg = { type: "message", message };
         ws.send(JSON.stringify(msg));
     }
+    // Replay slash commands if available
+    if (session.slashCommands.length > 0) {
+        const cmdMsg = { type: "slash_commands", commands: session.slashCommands };
+        ws.send(JSON.stringify(cmdMsg));
+    }
     // Signal replay complete
     const replayDone = { type: "replay_complete" };
     ws.send(JSON.stringify(replayDone));
