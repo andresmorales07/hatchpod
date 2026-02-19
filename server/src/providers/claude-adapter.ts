@@ -6,7 +6,6 @@ import type {
   SDKUserMessage,
   SDKUserMessageReplay,
   SDKResultMessage,
-  SDKSystemMessage,
   SlashCommand as SDKSlashCommand,
   PermissionResult,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -112,19 +111,6 @@ function normalizeResult(msg: SDKResultMessage, index: number): NormalizedMessag
   };
 }
 
-function normalizeSystem(msg: SDKSystemMessage, index: number): NormalizedMessage | null {
-  if (msg.subtype !== "init") return null;
-  const slashCommands: SlashCommand[] = (msg.slash_commands ?? []).map((name) => ({
-    name,
-    description: "",
-  }));
-  return {
-    role: "system",
-    event: { type: "system_init", slashCommands },
-    index,
-  };
-}
-
 function normalizeMessage(msg: SDKMessage, index: number): NormalizedMessage | null {
   switch (msg.type) {
     case "assistant":
@@ -133,9 +119,8 @@ function normalizeMessage(msg: SDKMessage, index: number): NormalizedMessage | n
       return normalizeUser(msg as SDKUserMessage | SDKUserMessageReplay, index);
     case "result":
       return normalizeResult(msg as SDKResultMessage, index);
-    case "system":
-      return normalizeSystem(msg as SDKSystemMessage, index);
     default:
+      // system/init messages are handled via supportedCommands() after the stream
       return null;
   }
 }
@@ -211,7 +196,10 @@ export class ClaudeAdapter implements ProviderAdapter {
             description: cmd.description,
             argumentHint: cmd.argumentHint || undefined,
           })),
-        () => null, // Swallow errors — slash commands are non-critical
+        (err) => {
+          console.warn("Failed to fetch enriched slash commands (non-critical):", err);
+          return null;
+        },
       );
 
       for await (const sdkMessage of queryHandle) {

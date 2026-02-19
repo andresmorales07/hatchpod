@@ -57,7 +57,7 @@ export function useSession(sessionId: string | null, token: string): SessionHook
         case "message": setMessages((prev) => [...prev, msg.message]); break;
         case "status": setStatus(msg.status); break;
         case "tool_approval_request": setPendingApproval({ toolName: msg.toolName, toolUseId: msg.toolUseId, input: msg.input }); break;
-        case "slash_commands": setSlashCommands(msg.commands); break;
+        case "slash_commands": if (Array.isArray(msg.commands)) setSlashCommands(msg.commands); break;
         case "replay_complete": break;
         case "error": console.error("Server error:", msg.message); break;
         case "ping": break;

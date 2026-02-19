@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { ToolApproval } from "./ToolApproval";
 import { SlashCommandDropdown, getFilteredCommands } from "./SlashCommandDropdown";
@@ -15,12 +15,14 @@ export function ChatView({ sessionId, token }: Props) {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  const showDropdown = input.startsWith("/") && slashCommands.length > 0;
-  const filtered = showDropdown ? getFilteredCommands(slashCommands, input) : [];
+  const filtered = useMemo(
+    () => slashCommands.length > 0 ? getFilteredCommands(slashCommands, input) : [],
+    [slashCommands, input],
+  );
   const dropdownVisible = filtered.length > 0;
 
-  // Reset dropdown index when filter changes
-  useEffect(() => { setDropdownIndex(0); }, [input]);
+  // Reset dropdown index when filter or commands change
+  useEffect(() => { if (dropdownVisible) setDropdownIndex(0); }, [filtered.length, dropdownVisible]);
 
   const selectCommand = useCallback((cmd: SlashCommand) => {
     setInput(`/${cmd.name} `);

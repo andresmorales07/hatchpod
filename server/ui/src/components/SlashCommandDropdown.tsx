@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import type { SlashCommand } from "../types";
 
 interface Props {
@@ -7,7 +7,7 @@ interface Props {
   onSelect: (command: SlashCommand) => void;
 }
 
-export function SlashCommandDropdown({ commands, activeIndex, onSelect }: Props) {
+export const SlashCommandDropdown = memo(function SlashCommandDropdown({ commands, activeIndex, onSelect }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
 
   // Scroll active item into view
@@ -33,12 +33,13 @@ export function SlashCommandDropdown({ commands, activeIndex, onSelect }: Props)
       ))}
     </div>
   );
-}
+});
 
 export function getFilteredCommands(commands: SlashCommand[], input: string): SlashCommand[] {
   if (!input.startsWith("/")) return [];
   const filter = input.slice(1);
+  if (filter.includes(" ")) return []; // User is typing arguments, not selecting a command
   return commands.filter((cmd) =>
-    cmd.name.toLowerCase().startsWith(filter.toLowerCase()),
+    typeof cmd.name === "string" && cmd.name.toLowerCase().startsWith(filter.toLowerCase()),
   );
 }

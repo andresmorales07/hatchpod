@@ -79,19 +79,6 @@ function normalizeResult(msg, index) {
         index,
     };
 }
-function normalizeSystem(msg, index) {
-    if (msg.subtype !== "init")
-        return null;
-    const slashCommands = (msg.slash_commands ?? []).map((name) => ({
-        name,
-        description: "",
-    }));
-    return {
-        role: "system",
-        event: { type: "system_init", slashCommands },
-        index,
-    };
-}
 function normalizeMessage(msg, index) {
     switch (msg.type) {
         case "assistant":
@@ -100,9 +87,8 @@ function normalizeMessage(msg, index) {
             return normalizeUser(msg, index);
         case "result":
             return normalizeResult(msg, index);
-        case "system":
-            return normalizeSystem(msg, index);
         default:
+            // system/init messages are handled via supportedCommands() after the stream
             return null;
     }
 }
@@ -162,7 +148,10 @@ export class ClaudeAdapter {
                 name: cmd.name,
                 description: cmd.description,
                 argumentHint: cmd.argumentHint || undefined,
-            })), () => null);
+            })), (err) => {
+                console.warn("Failed to fetch enriched slash commands (non-critical):", err);
+                return null;
+            });
             for await (const sdkMessage of queryHandle) {
                 // Capture result data before normalizing
                 if (sdkMessage.type === "result") {
