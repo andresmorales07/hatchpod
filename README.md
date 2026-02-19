@@ -1,14 +1,14 @@
 <div align="center">
 
-<h1>📦 Claude Box</h1>
+<h1>📦 Hatchpod</h1>
 
 <p><strong>A persistent, self-hosted Claude Code workstation you can access from anywhere.</strong></p>
 
 <p>
-  <a href="https://github.com/andresmorales07/claude-box/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/andresmorales07/claude-box/ci.yml?branch=main&label=CI&logo=github" alt="CI"></a>
-  <a href="https://github.com/andresmorales07/claude-box/releases/latest"><img src="https://img.shields.io/github/v/release/andresmorales07/claude-box?logo=github" alt="Release"></a>
-  <a href="https://github.com/andresmorales07/claude-box/pkgs/container/claude-box"><img src="https://img.shields.io/badge/ghcr.io-claude--box-blue?logo=docker" alt="Container"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/andresmorales07/claude-box" alt="License"></a>
+  <a href="https://github.com/andresmorales07/hatchpod/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/andresmorales07/hatchpod/ci.yml?branch=main&label=CI&logo=github" alt="CI"></a>
+  <a href="https://github.com/andresmorales07/hatchpod/releases/latest"><img src="https://img.shields.io/github/v/release/andresmorales07/hatchpod?logo=github" alt="Release"></a>
+  <a href="https://github.com/andresmorales07/hatchpod/pkgs/container/hatchpod"><img src="https://img.shields.io/badge/ghcr.io-hatchpod-blue?logo=docker" alt="Container"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/andresmorales07/hatchpod" alt="License"></a>
 </p>
 
 </div>
@@ -17,11 +17,11 @@ Run Claude Code on a server, VPS, or homelab — then connect via **SSH**, **web
 
 Think of it as your personal cloud dev machine with Claude Code built in.
 
-## Why Claude Box?
+## Why Hatchpod?
 
-Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/claude-code/)) that spin up for a single task and disappear, Claude Box is a **long-lived workstation**.
+Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/claude-code/)) that spin up for a single task and disappear, Hatchpod is a **long-lived workstation**.
 
-| | Ephemeral Sandboxes | Claude Box |
+| | Ephemeral Sandboxes | Hatchpod |
 |---|---|---|
 | **Lifecycle** | Task-scoped, disposable | Persistent — pick up where you left off |
 | **Access** | Local only | SSH, Mosh, web terminal, Tailscale VPN |
@@ -33,15 +33,15 @@ Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/s
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/andresmorales07/claude-box.git
-cd claude-box
+git clone https://github.com/andresmorales07/hatchpod.git
+cd hatchpod
 cp .env.example .env            # edit .env to set your passwords
 
 # 2. Start (pulls the prebuilt image — no build step needed)
 docker compose up -d
 
 # 3. Connect
-ssh -p 2222 claude@localhost    # password is CLAUDE_USER_PASSWORD from .env
+ssh -p 2222 hatchpod@localhost    # password is SSH_PASSWORD from .env
 
 # 4. Authenticate Claude Code (first time only)
 claude                          # follow the login link that appears
@@ -50,7 +50,7 @@ claude                          # follow the login link that appears
 > **No Sysbox?** The default `docker-compose.yml` sets `runtime: sysbox-runc` for Docker-in-Docker. If you don't have [Sysbox](https://github.com/nestybox/sysbox) installed, create a one-line override:
 >
 > ```bash
-> echo 'services: { claude-box: { runtime: runc } }' > docker-compose.override.yml
+> echo 'services: { hatchpod: { runtime: runc } }' > docker-compose.override.yml
 > docker compose up -d
 > ```
 >
@@ -75,7 +75,7 @@ claude                          # follow the login link that appears
 <tr><td>GitHub CLI (gh)</td><td>GitHub operations</td></tr>
 <tr><td>curl, jq</td><td>HTTP requests and JSON processing</td></tr>
 <tr><td rowspan="2">🖥️ <strong>System</strong></td><td>s6-overlay v3</td><td>Process supervision</td></tr>
-<tr><td>sudo (passwordless)</td><td>Root access for <code>claude</code> user</td></tr>
+<tr><td>sudo (passwordless)</td><td>Root access for <code>hatchpod</code> user</td></tr>
 </table>
 
 ## Access Methods
@@ -85,13 +85,13 @@ Connect from any machine — all access methods work both locally and remotely.
 ### SSH (port 2222)
 
 ```bash
-ssh -p 2222 claude@localhost
+ssh -p 2222 hatchpod@localhost
 ```
 
-Use your `CLAUDE_USER_PASSWORD` to authenticate, or add your public key:
+Use your `SSH_PASSWORD` to authenticate, or add your public key:
 
 ```bash
-ssh-copy-id -p 2222 claude@localhost
+ssh-copy-id -p 2222 hatchpod@localhost
 ```
 
 ### Web Terminal (port 7681)
@@ -123,7 +123,7 @@ API endpoints: `GET /healthz`, `POST /api/sessions`, `GET /api/sessions`, `GET /
 Resilient connection that survives WiFi switches, VPN reconnects, and laptop sleep/wake:
 
 ```bash
-mosh --ssh='ssh -p 2222' claude@localhost
+mosh --ssh='ssh -p 2222' hatchpod@localhost
 ```
 
 ### Tailscale VPN (Optional)
@@ -138,7 +138,7 @@ Connect from anywhere without exposing ports publicly. Set `TS_AUTHKEY` in your 
 3. Restart: `make down && make up`
 4. Connect via your Tailscale IP:
    ```bash
-   ssh -p 2222 claude@<tailscale-ip>
+   ssh -p 2222 hatchpod@<tailscale-ip>
    ```
 
 **Networking mode:** The container auto-detects TUN device availability at startup:
@@ -151,25 +151,25 @@ Connect from anywhere without exposing ports publicly. Set `TS_AUTHKEY` in your 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CLAUDE_USER_PASSWORD` | SSH password for `claude` user | `changeme` |
-| `TTYD_USERNAME` | Web terminal username | `claude` |
+| `SSH_PASSWORD` | SSH password for `hatchpod` user | `changeme` |
+| `TTYD_USERNAME` | Web terminal username | `hatchpod` |
 | `TTYD_PASSWORD` | Web terminal password | `changeme` |
 | `API_PASSWORD` | API server + Web UI password | `changeme` |
 | `TS_AUTHKEY` | Tailscale auth key (enables VPN) | _(disabled)_ |
-| `TS_HOSTNAME` | Tailscale node name | `claude-box` |
+| `TS_HOSTNAME` | Tailscale node name | `hatchpod` |
 | `DOTFILES_REPO` | Git URL for dotfiles repo | _(disabled)_ |
 | `DOTFILES_BRANCH` | Branch to checkout | _(default)_ |
 
 ### Authentication
 
-Claude Box uses the interactive login flow. Run `claude` inside the container and follow the login link. Credentials are stored in `~/.claude/` which is backed by the `claude-home` Docker volume, so they persist across restarts.
+Hatchpod uses the interactive login flow. Run `claude` inside the container and follow the login link. Credentials are stored in `~/.claude/` which is backed by the `home` Docker volume, so they persist across restarts.
 
 ### MCP Servers
 
 MCP servers configured inside the container persist across restarts:
 
 ```bash
-ssh -p 2222 claude@localhost
+ssh -p 2222 hatchpod@localhost
 claude mcp add my-server -- npx some-mcp-server
 ```
 
@@ -187,12 +187,12 @@ On first boot, the repo is cloned to `~/dotfiles`. If an install script (`instal
 
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
-| `claude-home` | `/home/claude` | Claude config, workspace, dotfiles, npm globals |
+| `home` | `/home/hatchpod` | Claude config, workspace, dotfiles, npm globals |
 | `docker-data` | `/var/lib/docker` | Docker images, containers, layers |
 
 ## Docker-in-Docker
 
-Claude Box includes Docker Engine inside the container. With [Sysbox](https://github.com/nestybox/sysbox) installed on the host, agents can build and run Docker containers securely without `--privileged`.
+Hatchpod includes Docker Engine inside the container. With [Sysbox](https://github.com/nestybox/sysbox) installed on the host, agents can build and run Docker containers securely without `--privileged`.
 
 ```bash
 # Verify DinD works
@@ -210,7 +210,7 @@ The `docker-data` volume persists pulled images and build cache across container
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│            claude-box container (sysbox-runc)             │
+│            hatchpod container (sysbox-runc)               │
 │                                                          │
 │  ┌────────┐ ┌─────────┐ ┌───────┐ ┌──────┐ ┌──────────┐ │
 │  │  api   │ │  sshd   │ │ ttyd  │ │dockerd│ │tailscaled│ │
@@ -224,7 +224,7 @@ The `docker-data` volume persists pulled images and build cache across container
 │       Node.js 20 · Python 3 · uv/uvx (MCP)              │
 │                                                          │
 │  Volumes:                                                │
-│   /home/claude     → claude-home vol                     │
+│   /home/hatchpod   → home vol                            │
 │   /var/lib/docker  → docker-data vol                     │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -251,18 +251,18 @@ Process supervision by [s6-overlay](https://github.com/just-containers/s6-overla
 - The `.env` file is excluded from git via `.gitignore`
 - SSH root login is disabled
 - For remote access, use SSH tunneling or put behind a reverse proxy with TLS
-- The `claude` user has passwordless sudo inside the container
+- The `hatchpod` user has passwordless sudo inside the container
 
 ## Backup and Restore
 
 ```bash
 # Backup
-docker run --rm -v claude-box_claude-home:/data -v $(pwd):/backup alpine \
-    tar czf /backup/claude-home-backup.tar.gz -C /data .
+docker run --rm -v hatchpod_home:/data -v $(pwd):/backup alpine \
+    tar czf /backup/home-backup.tar.gz -C /data .
 
 # Restore
-docker run --rm -v claude-box_claude-home:/data -v $(pwd):/backup alpine \
-    tar xzf /backup/claude-home-backup.tar.gz -C /data
+docker run --rm -v hatchpod_home:/data -v $(pwd):/backup alpine \
+    tar xzf /backup/home-backup.tar.gz -C /data
 ```
 
 ---

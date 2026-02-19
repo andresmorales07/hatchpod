@@ -7,7 +7,7 @@ interface Props {
   onStartSession: (cwd: string) => void;
 }
 
-const BROWSE_ROOT = "/home/claude/workspace";
+const BROWSE_ROOT = "/home/hatchpod/workspace";
 
 export function FolderPicker({ token, cwd, onCwdChange, onStartSession }: Props) {
   const [open, setOpen] = useState(false);

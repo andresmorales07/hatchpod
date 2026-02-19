@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const username = process.env.TTYD_USERNAME || 'claude';
+const username = process.env.TTYD_USERNAME || 'hatchpod';
 const password = process.env.TTYD_PASSWORD || 'changeme';
 const apiPassword = process.env.API_PASSWORD || 'changeme';
 

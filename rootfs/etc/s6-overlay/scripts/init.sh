@@ -6,48 +6,48 @@ if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
     ssh-keygen -A
 fi
 
-# Set claude user password from env
-if [ -n "$CLAUDE_USER_PASSWORD" ]; then
-    echo "claude:${CLAUDE_USER_PASSWORD}" | chpasswd
+# Set hatchpod user password from env
+if [ -n "$SSH_PASSWORD" ]; then
+    echo "hatchpod:${SSH_PASSWORD}" | chpasswd
 fi
 
 # Ensure SSH run directory exists
 mkdir -p /run/sshd
 
 # Ensure key directories exist on the volume
-mkdir -p /home/claude/.claude/ssh
-mkdir -p /home/claude/workspace
-mkdir -p /home/claude/.gnupg
-touch /home/claude/.claude/ssh/authorized_keys
-chmod 700 /home/claude/.claude/ssh
-chmod 600 /home/claude/.claude/ssh/authorized_keys
-chmod 700 /home/claude/.gnupg
+mkdir -p /home/hatchpod/.claude/ssh
+mkdir -p /home/hatchpod/workspace
+mkdir -p /home/hatchpod/.gnupg
+touch /home/hatchpod/.claude/ssh/authorized_keys
+chmod 700 /home/hatchpod/.claude/ssh
+chmod 600 /home/hatchpod/.claude/ssh/authorized_keys
+chmod 700 /home/hatchpod/.gnupg
 
 # Ensure Docker runtime directories exist
 mkdir -p /var/run/docker
 
 # Clone dotfiles repo on first boot (optional, set DOTFILES_REPO to enable)
-if [ -n "$DOTFILES_REPO" ] && [ ! -d /home/claude/dotfiles ]; then
+if [ -n "$DOTFILES_REPO" ] && [ ! -d /home/hatchpod/dotfiles ]; then
     clone_args="git clone"
     if [ -n "$DOTFILES_BRANCH" ]; then
         clone_args="$clone_args --branch $(printf '%q' "$DOTFILES_BRANCH")"
     fi
-    clone_args="$clone_args $(printf '%q' "$DOTFILES_REPO") /home/claude/dotfiles"
+    clone_args="$clone_args $(printf '%q' "$DOTFILES_REPO") /home/hatchpod/dotfiles"
 
-    if su - claude -c "$clone_args"; then
+    if su - hatchpod -c "$clone_args"; then
         # Run install script if one exists
         install_ran=false
         for script in install.sh setup.sh bootstrap.sh; do
-            if [ -x "/home/claude/dotfiles/$script" ]; then
-                su - claude -c "cd /home/claude/dotfiles && ./$script"
+            if [ -x "/home/hatchpod/dotfiles/$script" ]; then
+                su - hatchpod -c "cd /home/hatchpod/dotfiles && ./$script"
                 install_ran=true
                 break
             fi
         done
 
         # If Makefile exists and no install script was found, run make
-        if [ "$install_ran" = false ] && [ -f "/home/claude/dotfiles/Makefile" ]; then
-            su - claude -c "cd /home/claude/dotfiles && make"
+        if [ "$install_ran" = false ] && [ -f "/home/hatchpod/dotfiles/Makefile" ]; then
+            su - hatchpod -c "cd /home/hatchpod/dotfiles && make"
         fi
     else
         echo "init: warning: dotfiles clone failed for $DOTFILES_REPO" >&2
@@ -56,10 +56,10 @@ fi
 
 # Seed default dotfiles on fresh volumes (don't overwrite user customizations)
 for f in .bashrc .profile .tmux.conf; do
-    if [ ! -f "/home/claude/$f" ] && [ -f "/etc/skel/$f" ]; then
-        cp "/etc/skel/$f" "/home/claude/$f"
+    if [ ! -f "/home/hatchpod/$f" ] && [ -f "/etc/skel/$f" ]; then
+        cp "/etc/skel/$f" "/home/hatchpod/$f"
     fi
 done
 
 # Fix ownership on mounted volume
-chown -R claude:claude /home/claude
+chown -R hatchpod:hatchpod /home/hatchpod

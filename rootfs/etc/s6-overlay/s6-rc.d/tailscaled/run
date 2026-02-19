@@ -6,8 +6,8 @@ if [ -z "$TS_AUTHKEY" ]; then
     exec s6-svc -Od .
 fi
 
-mkdir -p /home/claude/.tailscale
-chown claude:claude /home/claude/.tailscale
+mkdir -p /home/hatchpod/.tailscale
+chown hatchpod:hatchpod /home/hatchpod/.tailscale
 mkdir -p /var/run/tailscale
 
 # Auto-detect TUN device availability for transparent networking
@@ -16,7 +16,7 @@ if [ -c /dev/net/tun ]; then
     # Kernel TUN mode — transparent routing, no proxy needed
     echo "tailscaled: using kernel TUN mode (transparent networking)" >&2
     exec tailscaled \
-        --statedir=/home/claude/.tailscale \
+        --statedir=/home/hatchpod/.tailscale \
         --socket=/var/run/tailscale/tailscaled.sock
 else
     # Userspace networking fallback — apps need SOCKS5 proxy for Tailscale peers only
@@ -38,6 +38,6 @@ EOF
 
     exec tailscaled \
         --tun=userspace-networking \
-        --statedir=/home/claude/.tailscale \
+        --statedir=/home/hatchpod/.tailscale \
         --socket=/var/run/tailscale/tailscaled.sock
 fi

@@ -1,11 +1,10 @@
 {
-  "name": "TBD",
-  "private": true,
+  "name": "hatchpod-api",
   "version": "0.1.0",
   "description": "Web UI for Claude Code — manage sessions from your browser",
   "type": "module",
   "bin": {
-    "TBD": "./bin/cli.js"
+    "hatchpod-api": "./bin/cli.js"
   },
   "files": [
     "dist/",

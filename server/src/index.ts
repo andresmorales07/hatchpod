@@ -100,5 +100,5 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`claude-box API server listening on ${HOST}:${PORT}`);
+  console.log(`hatchpod API server listening on ${HOST}:${PORT}`);
 });

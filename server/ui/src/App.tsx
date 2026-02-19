@@ -9,7 +9,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [cwd, setCwd] = useState("/home/claude/workspace");
+  const [cwd, setCwd] = useState("/home/hatchpod/workspace");
 
   const startSession = useCallback(async (sessionCwd: string) => {
     try {
@@ -38,7 +38,7 @@ export function App() {
         <button className="menu-btn" onClick={() => setShowSidebar(!showSidebar)}>
           {showSidebar ? "\u2715" : "\u2630"}
         </button>
-        <h1>Claude Box</h1>
+        <h1>Hatchpod</h1>
       </header>
       <div className="app-layout">
         <aside className={`sidebar ${showSidebar ? "open" : ""}`}>
@@ -71,7 +71,7 @@ function LoginPage({ token, setToken, onLogin }: { token: string; setToken: (t: 
   return (
     <div className="login-page">
       <form className="login-form" onSubmit={handleSubmit}>
-        <h1>Claude Box</h1>
+        <h1>Hatchpod</h1>
         <input type="password" placeholder="API Password" value={token} onChange={(e) => setToken(e.target.value)} autoFocus />
         <button type="submit">Connect</button>
         {error && <p className="error">{error}</p>}

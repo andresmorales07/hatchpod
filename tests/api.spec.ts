@@ -160,18 +160,18 @@ test('browse requires auth', async ({ request }) => {
 
 test('session respects cwd from request', async ({ request }) => {
   const res = await request.post('/api/sessions', {
-    data: { prompt: 'pwd', cwd: '/home/claude/workspace' },
+    data: { prompt: 'pwd', cwd: '/home/hatchpod/workspace' },
   });
   expect(res.status()).toBe(201);
   const { id } = await res.json();
   const detail = await request.get(`/api/sessions/${id}`);
   const session = await detail.json();
-  expect(session.cwd).toBe('/home/claude/workspace');
+  expect(session.cwd).toBe('/home/hatchpod/workspace');
 });
 
 test('idle session has correct status and empty messages', async ({ request }) => {
   const createRes = await request.post('/api/sessions', {
-    data: { cwd: '/home/claude/workspace' },
+    data: { cwd: '/home/hatchpod/workspace' },
   });
   const { id } = await createRes.json();
 
@@ -180,5 +180,5 @@ test('idle session has correct status and empty messages', async ({ request }) =
   const session = await res.json();
   expect(session.status).toBe('idle');
   expect(session.messages).toEqual([]);
-  expect(session.cwd).toBe('/home/claude/workspace');
+  expect(session.cwd).toBe('/home/hatchpod/workspace');
 });
