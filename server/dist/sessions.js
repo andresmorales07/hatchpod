@@ -87,7 +87,7 @@ export async function createSession(req) {
         createdAt: new Date(),
         permissionMode: req.permissionMode ?? "default",
         model: req.model,
-        cwd: req.cwd ?? "/home/claude/workspace",
+        cwd: req.cwd ?? (process.env.DEFAULT_CWD ?? process.cwd()),
         abortController: new AbortController(),
         messages: [],
         slashCommands: [],
