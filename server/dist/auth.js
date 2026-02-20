@@ -26,7 +26,11 @@ setInterval(() => {
             failedAttempts.set(key, recent);
     }
 }, 5 * 60 * 1000).unref();
+const MAX_TRACKED_IPS = 10_000;
 function recordFailedAttempt(ip) {
+    if (failedAttempts.size >= MAX_TRACKED_IPS && !failedAttempts.has(ip)) {
+        return; // Shed load rather than grow unbounded
+    }
     const timestamps = failedAttempts.get(ip) ?? [];
     timestamps.push(Date.now());
     failedAttempts.set(ip, timestamps);

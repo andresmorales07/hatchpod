@@ -42,7 +42,7 @@ const SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+    "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 function setSecurityHeaders(res) {
@@ -52,34 +52,43 @@ function setSecurityHeaders(res) {
 }
 export function createApp() {
     const server = createHttpServer(async (req, res) => {
-        setSecurityHeaders(res);
-        const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-        const pathname = url.pathname;
-        // API and health routes
-        if (pathname === "/healthz" || pathname.startsWith("/api/")) {
-            await handleRequest(req, res);
-            return;
-        }
-        // Static file serving
-        const result = await serveStatic(pathname === "/" ? "/index.html" : pathname);
-        if (result) {
-            res.writeHead(200, { "Content-Type": result.contentType });
-            res.end(result.data);
-            return;
-        }
-        // SPA fallback: serve index.html for paths without file extensions
-        const ext = extname(pathname);
-        if (!ext) {
-            const indexResult = await serveStatic("/index.html");
-            if (indexResult) {
-                res.writeHead(200, { "Content-Type": "text/html" });
-                res.end(indexResult.data);
+        try {
+            setSecurityHeaders(res);
+            const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+            const pathname = url.pathname;
+            // API and health routes
+            if (pathname === "/healthz" || pathname.startsWith("/api/")) {
+                await handleRequest(req, res);
                 return;
             }
+            // Static file serving
+            const result = await serveStatic(pathname === "/" ? "/index.html" : pathname);
+            if (result) {
+                res.writeHead(200, { "Content-Type": result.contentType });
+                res.end(result.data);
+                return;
+            }
+            // SPA fallback: serve index.html for paths without file extensions
+            const ext = extname(pathname);
+            if (!ext) {
+                const indexResult = await serveStatic("/index.html");
+                if (indexResult) {
+                    res.writeHead(200, { "Content-Type": "text/html" });
+                    res.end(indexResult.data);
+                    return;
+                }
+            }
+            // 404
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "not found" }));
         }
-        // 404
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "not found" }));
+        catch (err) {
+            console.error("Unhandled error in request handler:", err);
+            if (!res.headersSent) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "internal server error" }));
+            }
+        }
     });
     // WebSocket upgrade handling — authentication happens via first message, not URL
     const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 }); // 1 MB

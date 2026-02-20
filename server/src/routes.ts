@@ -18,6 +18,7 @@ const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
 const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
+// Must match PermissionModeCommon from providers/types.ts (minus "bypassPermissions" which is gated separately)
 const VALID_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "delegate", "dontAsk"]);
 
 function json(res: ServerResponse, status: number, body: unknown): void {
