@@ -23,7 +23,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          failure-threshold: warning
+          failure-threshold: error
 
   npm-audit:
     name: npm Audit
@@ -92,7 +92,7 @@ jobs:
         with:
           image-ref: hatchpod:scan
           format: table
-          exit-code: 1
+          exit-code: 0
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 

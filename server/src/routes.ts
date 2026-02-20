@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { authenticateRequest, sendUnauthorized } from "./auth.js";
+import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
 import {
   listSessions,
   getSession,
@@ -17,6 +17,9 @@ const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
+const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
+// Must match PermissionModeCommon from providers/types.ts (minus "bypassPermissions" which is gated separately)
+const VALID_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "delegate", "dontAsk"]);
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -65,7 +68,12 @@ export async function handleRequest(
 
   // All /api/* routes require auth
   if (pathname.startsWith("/api/")) {
-    if (!authenticateRequest(req)) {
+    const authResult = authenticateRequest(req);
+    if (authResult === "rate_limited") {
+      sendRateLimited(res);
+      return;
+    }
+    if (!authResult) {
       sendUnauthorized(res);
       return;
     }
@@ -92,6 +100,29 @@ export async function handleRequest(
     if (parsed.prompt !== undefined && typeof parsed.prompt !== "string") {
       json(res, 400, { error: "prompt must be a string" });
       return;
+    }
+    // Validate permissionMode
+    if (parsed.permissionMode !== undefined) {
+      if (parsed.permissionMode === "bypassPermissions" && !ALLOW_BYPASS_PERMISSIONS) {
+        json(res, 403, { error: "bypassPermissions is disabled; set ALLOW_BYPASS_PERMISSIONS=1 to enable" });
+        return;
+      }
+      if (parsed.permissionMode !== "bypassPermissions" && !VALID_PERMISSION_MODES.has(parsed.permissionMode)) {
+        json(res, 400, { error: "invalid permissionMode" });
+        return;
+      }
+    }
+    // Validate cwd is under BROWSE_ROOT
+    if (parsed.cwd !== undefined) {
+      if (typeof parsed.cwd !== "string" || parsed.cwd.includes("\0")) {
+        json(res, 400, { error: "invalid cwd" });
+        return;
+      }
+      const absCwd = resolve(BROWSE_ROOT, parsed.cwd);
+      if (absCwd !== BROWSE_ROOT && !absCwd.startsWith(BROWSE_ROOT + "/")) {
+        json(res, 400, { error: "cwd must be within the workspace" });
+        return;
+      }
     }
     try {
       const session = await createSession(parsed);

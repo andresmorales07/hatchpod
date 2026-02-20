@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
-import { requirePassword } from "./auth.js";
+import { requirePassword, getRequestIp } from "./auth.js";
 import { handleRequest } from "./routes.js";
 import { handleWsConnection, extractSessionIdFromPath } from "./ws.js";
 
@@ -43,46 +43,90 @@ async function serveStatic(pathname: string): Promise<{ data: Buffer; contentTyp
   }
 }
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
+function setSecurityHeaders(res: import("node:http").ServerResponse): void {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    res.setHeader(key, value);
+  }
+}
+
 export function createApp() {
   const server = createHttpServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    const pathname = url.pathname;
+    try {
+      setSecurityHeaders(res);
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+      const pathname = url.pathname;
 
-    // API and health routes
-    if (pathname === "/healthz" || pathname.startsWith("/api/")) {
-      await handleRequest(req, res);
-      return;
-    }
-
-    // Static file serving
-    const result = await serveStatic(pathname === "/" ? "/index.html" : pathname);
-    if (result) {
-      res.writeHead(200, { "Content-Type": result.contentType });
-      res.end(result.data);
-      return;
-    }
-
-    // SPA fallback: serve index.html for paths without file extensions
-    const ext = extname(pathname);
-    if (!ext) {
-      const indexResult = await serveStatic("/index.html");
-      if (indexResult) {
-        res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(indexResult.data);
+      // API and health routes
+      if (pathname === "/healthz" || pathname.startsWith("/api/")) {
+        await handleRequest(req, res);
         return;
       }
-    }
 
-    // 404
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "not found" }));
+      // Static file serving
+      const result = await serveStatic(pathname === "/" ? "/index.html" : pathname);
+      if (result) {
+        res.writeHead(200, { "Content-Type": result.contentType });
+        res.end(result.data);
+        return;
+      }
+
+      // SPA fallback: serve index.html for paths without file extensions
+      const ext = extname(pathname);
+      if (!ext) {
+        const indexResult = await serveStatic("/index.html");
+        if (indexResult) {
+          res.writeHead(200, { "Content-Type": "text/html" });
+          res.end(indexResult.data);
+          return;
+        }
+      }
+
+      // 404
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    } catch (err) {
+      console.error("Unhandled error in request handler:", err);
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal server error" }));
+      }
+    }
   });
 
   // WebSocket upgrade handling — authentication happens via first message, not URL
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 }); // 1 MB
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
+    // Origin validation — block cross-origin WebSocket hijacking from browsers.
+    // Non-browser clients may omit the Origin header; auth via first message is the primary gate.
+    const origin = req.headers.origin;
+    if (origin) {
+      const host = req.headers.host;
+      try {
+        const originHost = new URL(origin).host;
+        if (host && originHost !== host) {
+          console.warn(`WebSocket rejected: cross-origin from ${origin} (expected host: ${host})`);
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      } catch (err) {
+        console.warn(`WebSocket rejected: malformed origin "${origin}":`, err);
+        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+    }
 
     // Extract session ID from path (auth happens after upgrade via first message)
     const sessionId = extractSessionIdFromPath(url.pathname);
@@ -92,8 +136,9 @@ export function createApp() {
       return;
     }
 
+    const ip = getRequestIp(req);
     wss.handleUpgrade(req, socket, head, (ws) => {
-      handleWsConnection(ws, sessionId);
+      handleWsConnection(ws, sessionId, ip);
     });
   });
 

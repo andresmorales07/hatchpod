@@ -11,16 +11,82 @@ function safeCompare(a, b) {
         return false;
     return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
-export function authenticateRequest(req) {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith("Bearer "))
-        return false;
-    return safeCompare(auth.slice(7), API_PASSWORD);
+// ── Rate limiter ──
+const MAX_FAILED_ATTEMPTS = 10;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const failedAttempts = new Map();
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+    const cutoff = Date.now() - WINDOW_MS;
+    for (const [key, timestamps] of failedAttempts) {
+        const recent = timestamps.filter((t) => t > cutoff);
+        if (recent.length === 0)
+            failedAttempts.delete(key);
+        else
+            failedAttempts.set(key, recent);
+    }
+}, 5 * 60 * 1000).unref();
+const MAX_TRACKED_IPS = 10_000;
+function recordFailedAttempt(ip) {
+    if (failedAttempts.size >= MAX_TRACKED_IPS && !failedAttempts.has(ip)) {
+        return; // Shed load rather than grow unbounded
+    }
+    const timestamps = failedAttempts.get(ip) ?? [];
+    timestamps.push(Date.now());
+    failedAttempts.set(ip, timestamps);
 }
-export function authenticateToken(token) {
-    return safeCompare(token, API_PASSWORD);
+function isRateLimited(ip) {
+    const timestamps = failedAttempts.get(ip);
+    if (!timestamps)
+        return false;
+    const cutoff = Date.now() - WINDOW_MS;
+    const recent = timestamps.filter((t) => t > cutoff);
+    failedAttempts.set(ip, recent);
+    return recent.length >= MAX_FAILED_ATTEMPTS;
+}
+const TRUST_PROXY = process.env.TRUST_PROXY === "1";
+function getClientIp(req) {
+    if (TRUST_PROXY) {
+        const forwarded = req.headers["x-forwarded-for"];
+        if (typeof forwarded === "string")
+            return forwarded.split(",")[0].trim();
+    }
+    return req.socket.remoteAddress ?? "unknown";
+}
+export function authenticateRequest(req) {
+    const ip = getClientIp(req);
+    if (isRateLimited(ip)) {
+        console.warn(`Rate limited: HTTP auth attempt from ${ip}`);
+        return "rate_limited";
+    }
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith("Bearer ")) {
+        recordFailedAttempt(ip);
+        return false;
+    }
+    const valid = safeCompare(auth.slice(7), API_PASSWORD);
+    if (!valid)
+        recordFailedAttempt(ip);
+    return valid;
+}
+export function authenticateToken(token, ip) {
+    if (isRateLimited(ip)) {
+        console.warn(`Rate limited: token auth attempt from ${ip}`);
+        return "rate_limited";
+    }
+    const valid = safeCompare(token, API_PASSWORD);
+    if (!valid)
+        recordFailedAttempt(ip);
+    return valid;
+}
+export function getRequestIp(req) {
+    return getClientIp(req);
 }
 export function sendUnauthorized(res) {
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "unauthorized" }));
+}
+export function sendRateLimited(res) {
+    res.writeHead(429, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "too many failed attempts, try again later" }));
 }
