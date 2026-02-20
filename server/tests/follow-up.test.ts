@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startServer, stopServer, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
 import type { ServerMessage } from "../src/types.js";
 
 beforeAll(async () => {
   await startServer();
+  await resetSessions();
 });
 
 afterAll(async () => {
@@ -76,6 +77,40 @@ describe("Follow-up Messages", () => {
     const session = await detailRes.json() as { messages: Array<{ role: string }> };
     // At least 2 messages: one from first prompt, one from follow-up
     expect(session.messages.length).toBeGreaterThanOrEqual(2);
+
+    ws.close();
+  });
+
+  it("silently drops prompt sent to a running session", async () => {
+    const createRes = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "[slow] take time", provider: "test" }),
+    });
+    const { id } = await createRes.json();
+
+    await waitForStatus(id, "running");
+
+    const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
+
+    // Send follow-up while still running — should be silently ignored
+    ws.send(JSON.stringify({ type: "prompt", text: "Follow-up while running" }));
+
+    // Verify the session completes normally (follow-up was ignored)
+    const msgs = await collectMessages(ws, (msg) =>
+      msg.type === "status" && (msg as ServerMessage & { status: string }).status === "completed",
+    );
+
+    // Verify only original slow messages are present, no follow-up echo
+    const msgEvents = msgs.filter((m) => m.type === "message") as Array<
+      ServerMessage & { message: { parts: Array<{ type: string; text?: string }> } }
+    >;
+    for (const m of msgEvents) {
+      const textParts = m.message.parts.filter((p) => p.type === "text");
+      for (const tp of textParts) {
+        expect(tp.text).not.toContain("Follow-up while running");
+      }
+    }
 
     ws.close();
   });

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startServer, stopServer, api } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, waitForStatus } from "./helpers.js";
 
 beforeAll(async () => {
   await startServer();
+  await resetSessions();
 });
 
 afterAll(async () => {
@@ -48,14 +49,7 @@ describe("Session CRUD", () => {
     });
     const { id } = await createRes.json();
 
-    // Wait for it to complete
-    let session: Record<string, unknown> = {};
-    for (let i = 0; i < 100; i++) {
-      const res = await api(`/api/sessions/${id}`);
-      session = await res.json();
-      if (session.status === "completed") break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    const session = await waitForStatus(id, "completed");
 
     expect(session.status).toBe("completed");
     expect(session.messages).toBeDefined();
@@ -93,14 +87,7 @@ describe("Session CRUD", () => {
     expect(res.status).toBe(201);
     const { id } = await res.json();
 
-    // Wait for completion and check cwd
-    let session: Record<string, unknown> = {};
-    for (let i = 0; i < 100; i++) {
-      const detailRes = await api(`/api/sessions/${id}`);
-      session = await detailRes.json();
-      if (session.status === "completed") break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    const session = await waitForStatus(id, "completed");
     expect(session.cwd).toBe("/tmp");
   });
 });

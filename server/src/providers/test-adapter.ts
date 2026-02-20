@@ -6,8 +6,13 @@ import type {
   NormalizedMessage,
 } from "./types.js";
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(new Error("aborted")); return; }
+    const timer = setTimeout(resolve, ms);
+    const onAbort = () => { clearTimeout(timer); reject(new Error("aborted")); };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function checkAbort(signal: AbortSignal): void {
@@ -168,7 +173,7 @@ export class TestAdapter implements ProviderAdapter {
             index: index++,
           };
           if (i < 4) {
-            await delay(100);
+            await delay(100, abortSignal);
           }
         }
         break;

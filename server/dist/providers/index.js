@@ -1,5 +1,4 @@
 import { ClaudeAdapter } from "./claude-adapter.js";
-import { TestAdapter } from "./test-adapter.js";
 const adapters = new Map();
 export function registerProvider(adapter) {
     adapters.set(adapter.id, adapter);
@@ -15,4 +14,8 @@ export function listProviders() {
 }
 // Register built-in providers
 registerProvider(new ClaudeAdapter());
-registerProvider(new TestAdapter());
+// Register test provider only in test/development environments
+if (process.env.NODE_ENV === "test" || process.env.ENABLE_TEST_PROVIDER === "1") {
+    const { TestAdapter } = await import("./test-adapter.js");
+    registerProvider(new TestAdapter());
+}

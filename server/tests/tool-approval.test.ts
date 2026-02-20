@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startServer, stopServer, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
 import type { ServerMessage } from "../src/types.js";
 
 beforeAll(async () => {
   await startServer();
+  await resetSessions();
 });
 
 afterAll(async () => {
@@ -72,10 +73,9 @@ describe("Tool Approval", () => {
     const lastMsg = msgEvents[msgEvents.length - 1] as ServerMessage & {
       message: { parts: Array<{ type: string; text?: string }> };
     };
-    if (lastMsg) {
-      const textPart = lastMsg.message.parts.find((p) => p.type === "text");
-      expect(textPart?.text).toBe("Tool was denied.");
-    }
+    expect(lastMsg).toBeDefined();
+    const textPart = lastMsg.message.parts.find((p) => p.type === "text");
+    expect(textPart?.text).toBe("Tool was denied.");
 
     ws.close();
   });

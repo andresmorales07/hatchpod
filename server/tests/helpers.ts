@@ -19,6 +19,7 @@ export async function startServer(): Promise<TestServer> {
 
   // Set env before importing server module
   process.env.API_PASSWORD = TEST_PASSWORD;
+  process.env.NODE_ENV = "test";
 
   const { createApp } = await import("../src/index.js");
   const { clearSessions } = await import("../src/sessions.js");
@@ -64,6 +65,12 @@ export async function stopServer(): Promise<void> {
   activeServer = null;
 }
 
+/** Clear all sessions without stopping the server. Call in beforeAll for test isolation. */
+export async function resetSessions(): Promise<void> {
+  const { clearSessions } = await import("../src/sessions.js");
+  clearSessions();
+}
+
 export function getBaseUrl(): string {
   if (!activeServer) throw new Error("Server not started");
   return activeServer.baseUrl;
@@ -89,14 +96,28 @@ export async function api(
   });
 }
 
+/** Raw fetch without auth header — for testing auth rejection */
+export async function rawFetch(
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const url = `${getBaseUrl()}${path}`;
+  return fetch(url, options);
+}
+
 /** Connect WebSocket, send auth, return connected ws */
 export async function connectWs(sessionId: string): Promise<WebSocket> {
-  const wsUrl = `ws://127.0.0.1:${activeServer!.port}/api/sessions/${sessionId}/stream`;
+  if (!activeServer) throw new Error("Server not started — call startServer() before connectWs()");
+  const wsUrl = `ws://127.0.0.1:${activeServer.port}/api/sessions/${sessionId}/stream`;
   const ws = new WebSocket(wsUrl);
 
   await new Promise<void>((resolve, reject) => {
-    ws.once("open", resolve);
-    ws.once("error", reject);
+    const timeout = setTimeout(() => {
+      ws.terminate();
+      reject(new Error(`WebSocket connection to ${wsUrl} timed out after 5000ms`));
+    }, 5_000);
+    ws.once("open", () => { clearTimeout(timeout); resolve(); });
+    ws.once("error", (err) => { clearTimeout(timeout); reject(err); });
   });
 
   // Authenticate
@@ -120,7 +141,14 @@ export async function collectMessages(
     }, timeoutMs);
 
     function onMessage(data: Buffer | string) {
-      const msg = JSON.parse(typeof data === "string" ? data : data.toString()) as ServerMessage;
+      let msg: ServerMessage;
+      try {
+        msg = JSON.parse(typeof data === "string" ? data : data.toString()) as ServerMessage;
+      } catch (err) {
+        cleanup();
+        reject(new Error(`Failed to parse WebSocket message: ${String(data).slice(0, 200)}`));
+        return;
+      }
       messages.push(msg);
       if (predicate(msg)) {
         cleanup();
@@ -128,12 +156,29 @@ export async function collectMessages(
       }
     }
 
+    function onClose(code: number, reason: Buffer) {
+      cleanup();
+      reject(new Error(
+        `WebSocket closed (code=${code}, reason=${reason.toString()}) before predicate matched. ` +
+        `Collected: ${JSON.stringify(messages)}`,
+      ));
+    }
+
+    function onError(err: Error) {
+      cleanup();
+      reject(new Error(`WebSocket error before predicate matched: ${err.message}`));
+    }
+
     function cleanup() {
       clearTimeout(timeout);
       ws.off("message", onMessage);
+      ws.off("close", onClose);
+      ws.off("error", onError);
     }
 
     ws.on("message", onMessage);
+    ws.on("close", onClose);
+    ws.on("error", onError);
   });
 }
 

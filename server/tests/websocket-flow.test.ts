@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { WebSocket } from "ws";
-import { startServer, stopServer, api, connectWs, collectMessages, getPassword } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, connectWs, collectMessages, waitForStatus, getPassword } from "./helpers.js";
 import type { ServerMessage } from "../src/types.js";
 
 let port: number;
@@ -8,6 +8,7 @@ let port: number;
 beforeAll(async () => {
   const srv = await startServer();
   port = srv.port;
+  await resetSessions();
 });
 
 afterAll(async () => {
@@ -24,12 +25,7 @@ describe("WebSocket Flow", () => {
     const { id } = await createRes.json();
 
     // Wait for completion so all messages are buffered
-    for (let i = 0; i < 100; i++) {
-      const res = await api(`/api/sessions/${id}`);
-      const body = await res.json();
-      if ((body as { status: string }).status === "completed") break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await waitForStatus(id, "completed");
 
     // Now connect WS — should get replay
     const ws = await connectWs(id);
@@ -52,13 +48,7 @@ describe("WebSocket Flow", () => {
     });
     const { id } = await createRes.json();
 
-    // Wait for completion
-    for (let i = 0; i < 100; i++) {
-      const res = await api(`/api/sessions/${id}`);
-      const body = await res.json();
-      if ((body as { status: string }).status === "completed") break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await waitForStatus(id, "completed");
 
     const ws = await connectWs(id);
     const messages = await collectMessages(ws, (msg) => msg.type === "status");
@@ -133,6 +123,39 @@ describe("WebSocket Flow", () => {
     const errMsg = errorMsgs.find((m) => m.type === "error") as ServerMessage & { message: string };
     expect(errMsg).toBeDefined();
     expect(errMsg.message).toBe("invalid JSON");
+
+    ws.close();
+  });
+
+  it("closes with error when connecting to non-existent session", async () => {
+    const wsUrl = `ws://127.0.0.1:${port}/api/sessions/00000000-0000-0000-0000-000000000000/stream`;
+    const ws = new WebSocket(wsUrl);
+
+    await new Promise<void>((resolve) => {
+      ws.once("open", () => {
+        ws.send(JSON.stringify({ type: "auth", token: getPassword() }));
+      });
+      ws.once("close", () => resolve());
+    });
+    // Server should have closed the connection with "session not found"
+  });
+
+  it("returns error for unknown message type", async () => {
+    const createRes = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ provider: "test" }),
+    });
+    const { id } = await createRes.json();
+
+    const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
+
+    ws.send(JSON.stringify({ type: "nonexistent" }));
+
+    const msgs = await collectMessages(ws, (m) => m.type === "error");
+    const errMsg = msgs.find((m) => m.type === "error") as ServerMessage & { message: string };
+    expect(errMsg).toBeDefined();
+    expect(errMsg.message).toBe("unknown message type");
 
     ws.close();
   });

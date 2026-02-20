@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startServer, stopServer, api, waitForStatus } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, waitForStatus } from "./helpers.js";
 
 beforeAll(async () => {
   await startServer();
+  await resetSessions();
 });
 
 afterAll(async () => {

@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startServer, stopServer, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
 import type { ServerMessage } from "../src/types.js";
 
 beforeAll(async () => {
   await startServer();
+  await resetSessions();
 });
 
 afterAll(async () => {

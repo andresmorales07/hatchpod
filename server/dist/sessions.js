@@ -166,7 +166,16 @@ async function runSession(session, prompt, allowedTools, resumeSessionId) {
     }
     catch (err) {
         const currentStatus = session.status;
-        if (currentStatus !== "interrupted") {
+        const isAbortError = err instanceof Error &&
+            (err.name === "AbortError" || err.message === "aborted" || err.message.includes("abort"));
+        if (currentStatus === "interrupted" && isAbortError) {
+            // Expected abort from interruption — not an error
+        }
+        else if (currentStatus === "interrupted") {
+            // Interrupted, but the error is NOT an abort error — log it
+            console.error(`Session ${session.id} unexpected error during interruption:`, err);
+        }
+        else {
             session.status = "error";
             session.lastError = String(err);
             console.error(`Session ${session.id} error:`, err);
@@ -220,7 +229,9 @@ export function clearSessions() {
             try {
                 client.terminate();
             }
-            catch { }
+            catch (err) {
+                console.error(`Failed to terminate WS client in session ${session.id}:`, err);
+            }
         }
         session.clients.clear();
     }
