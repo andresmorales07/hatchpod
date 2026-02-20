@@ -101,4 +101,37 @@ describe("Session CRUD", () => {
     const body = await res.json();
     expect(body.error).toBe("cwd must be within the workspace");
   });
+
+  it("GET /api/providers returns registered providers", async () => {
+    const res = await api("/api/providers");
+    expect(res.status).toBe(200);
+    const providers = await res.json();
+    expect(Array.isArray(providers)).toBe(true);
+    expect(providers.length).toBeGreaterThanOrEqual(1);
+    // In test env, both claude and test should be registered
+    const ids = providers.map((p: { id: string }) => p.id);
+    expect(ids).toContain("test");
+  });
+
+  it("GET /api/sessions returns sessions with provider and new fields", async () => {
+    // Create a session first
+    const createRes = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "test listing", provider: "test" }),
+    });
+    expect(createRes.status).toBe(201);
+
+    // List sessions
+    const listRes = await api("/api/sessions");
+    expect(listRes.status).toBe(200);
+    const sessions = await listRes.json();
+    expect(sessions.length).toBeGreaterThanOrEqual(1);
+
+    const session = sessions.find((s: { provider: string }) => s.provider === "test");
+    expect(session).toBeDefined();
+    expect(session).toHaveProperty("provider");
+    expect(session).toHaveProperty("slug");
+    expect(session).toHaveProperty("summary");
+    expect(session).toHaveProperty("lastModified");
+  });
 });
