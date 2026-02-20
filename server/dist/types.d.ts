@@ -1,6 +1,6 @@
 import type { NormalizedMessage, PermissionModeCommon, ApprovalDecision, SlashCommand } from "./providers/types.js";
 import type { WebSocket } from "ws";
-export type SessionStatus = "idle" | "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error";
+export type SessionStatus = "idle" | "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error" | "history";
 export interface Session {
     id: string;
     provider: string;
@@ -17,6 +17,7 @@ export interface Session {
     numTurns: number;
     lastError: string | null;
     pendingApproval: PendingApproval | null;
+    alwaysAllowedTools: Set<string>;
     clients: Set<WebSocket>;
 }
 /** Serializable session representation for API responses (no internal handles). */
@@ -43,9 +44,13 @@ export interface SessionSummaryDTO {
     id: string;
     status: SessionStatus;
     createdAt: string;
+    lastModified: string;
     numTurns: number;
     totalCostUsd: number;
     hasPendingApproval: boolean;
+    provider: string;
+    slug: string | null;
+    summary: string | null;
 }
 export interface PendingApproval {
     toolName: string;
@@ -59,6 +64,7 @@ export type ClientMessage = {
 } | {
     type: "approve";
     toolUseId: string;
+    alwaysAllow?: boolean;
     answers?: Record<string, string>;
 } | {
     type: "deny";
@@ -100,4 +106,5 @@ export interface CreateSessionRequest {
     model?: string;
     cwd?: string;
     allowedTools?: string[];
+    resumeSessionId?: string;
 }

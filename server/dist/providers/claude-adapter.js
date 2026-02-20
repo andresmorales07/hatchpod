@@ -1,9 +1,10 @@
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
-function normalizeAssistant(msg, index) {
+function normalizeAssistant(msg, index, accumulatedThinking = "") {
     const content = msg.message?.content;
     if (!Array.isArray(content))
         return null;
     const parts = [];
+    let hasNativeThinking = false;
     for (const block of content) {
         switch (block.type) {
             case "text":
@@ -22,10 +23,16 @@ function normalizeAssistant(msg, index) {
                 break;
             case "thinking":
                 if (block.thinking) {
+                    hasNativeThinking = true;
                     parts.push({ type: "reasoning", text: block.thinking });
                 }
                 break;
         }
+    }
+    // Inject accumulated thinking from stream deltas if the SDK didn't
+    // include a native thinking block in the finalized message content
+    if (!hasNativeThinking && accumulatedThinking) {
+        parts.unshift({ type: "reasoning", text: accumulatedThinking });
     }
     if (parts.length === 0)
         return null;
@@ -79,10 +86,10 @@ function normalizeResult(msg, index) {
         index,
     };
 }
-function normalizeMessage(msg, index) {
+function normalizeMessage(msg, index, accumulatedThinking = "") {
     switch (msg.type) {
         case "assistant":
-            return normalizeAssistant(msg, index);
+            return normalizeAssistant(msg, index, accumulatedThinking);
         case "user":
             return normalizeUser(msg, index);
         case "result":
@@ -105,6 +112,7 @@ export class ClaudeAdapter {
         let providerSessionId;
         let totalCostUsd = 0;
         let numTurns = 0;
+        let accumulatedThinking = "";
         try {
             const queryHandle = sdkQuery({
                 prompt: options.prompt,
@@ -137,6 +145,9 @@ export class ClaudeAdapter {
                                 return {
                                     behavior: "allow",
                                     ...(decision.updatedInput ? { updatedInput: decision.updatedInput } : {}),
+                                    ...(decision.alwaysAllow && opts.suggestions
+                                        ? { updatedPermissions: opts.suggestions }
+                                        : {}),
                                 };
                             }
                             return {
@@ -164,6 +175,7 @@ export class ClaudeAdapter {
                         event.delta?.type === "thinking_delta") {
                         const thinking = event.delta?.thinking;
                         if (typeof thinking === "string") {
+                            accumulatedThinking += thinking;
                             try {
                                 options.onThinkingDelta?.(thinking);
                             }
@@ -183,7 +195,13 @@ export class ClaudeAdapter {
                         providerSessionId = resultMsg.session_id;
                     }
                 }
-                const normalized = normalizeMessage(sdkMessage, messageIndex);
+                // Only pass accumulated thinking to assistant messages; reset after use
+                let thinkingForMsg = "";
+                if (sdkMessage.type === "assistant") {
+                    thinkingForMsg = accumulatedThinking;
+                    accumulatedThinking = "";
+                }
+                const normalized = normalizeMessage(sdkMessage, messageIndex, thinkingForMsg);
                 if (normalized) {
                     messageIndex++;
                     yield normalized;

@@ -100,6 +100,54 @@ export class TestAdapter {
                 }
                 break;
             }
+            case "tool-approval-multi": {
+                // Two consecutive tool approval requests for the same tool.
+                // If "always allow" was used on the first, the second auto-approves.
+                checkAbort(abortSignal);
+                const toolUseId1 = randomUUID();
+                yield {
+                    role: "assistant",
+                    parts: [{ type: "tool_use", toolUseId: toolUseId1, toolName: "test_tool", input: { step: 1 } }],
+                    index: index++,
+                };
+                checkAbort(abortSignal);
+                const decision1 = await onToolApproval({
+                    toolName: "test_tool",
+                    toolUseId: toolUseId1,
+                    input: { step: 1 },
+                });
+                checkAbort(abortSignal);
+                yield {
+                    role: "user",
+                    parts: [{ type: "tool_result", toolUseId: toolUseId1, output: decision1.allow ? "ok" : "denied", isError: !decision1.allow }],
+                    index: index++,
+                };
+                // Second call — same toolName; should auto-approve if "always allow" was used on first
+                const toolUseId2 = randomUUID();
+                yield {
+                    role: "assistant",
+                    parts: [{ type: "tool_use", toolUseId: toolUseId2, toolName: "test_tool", input: { step: 2 } }],
+                    index: index++,
+                };
+                checkAbort(abortSignal);
+                const decision2 = await onToolApproval({
+                    toolName: "test_tool",
+                    toolUseId: toolUseId2,
+                    input: { step: 2 },
+                });
+                checkAbort(abortSignal);
+                yield {
+                    role: "user",
+                    parts: [{ type: "tool_result", toolUseId: toolUseId2, output: decision2.allow ? "ok" : "denied", isError: !decision2.allow }],
+                    index: index++,
+                };
+                yield {
+                    role: "assistant",
+                    parts: [{ type: "text", text: `first:${decision1.allow} second:${decision2.allow}` }],
+                    index: index++,
+                };
+                break;
+            }
             case "multi-turn": {
                 checkAbort(abortSignal);
                 // 1. Assistant text

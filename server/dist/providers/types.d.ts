@@ -63,6 +63,7 @@ export interface ToolApprovalRequest {
 export type ApprovalDecision = {
     allow: true;
     updatedInput?: Record<string, unknown>;
+    alwaysAllow?: boolean;
 } | {
     allow: false;
     message?: string;

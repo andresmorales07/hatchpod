@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
-import { listSessions, getSession, sessionToDTO, getSessionCount, createSession, interruptSession, } from "./sessions.js";
+import { listSessionsWithHistory, getSession, sessionToDTO, getSessionCount, createSession, interruptSession, } from "./sessions.js";
+import { listProviders } from "./providers/index.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
@@ -117,9 +118,17 @@ export async function handleRequest(req, res) {
         }
         return;
     }
-    // GET /api/sessions — list sessions
+    // GET /api/sessions — list sessions (optionally filtered by CWD for history)
     if (pathname === "/api/sessions" && method === "GET") {
-        json(res, 200, listSessions());
+        const cwd = url.searchParams.get("cwd") ?? undefined;
+        try {
+            const sessions = await listSessionsWithHistory(cwd);
+            json(res, 200, sessions);
+        }
+        catch (err) {
+            console.error("Failed to list sessions:", err);
+            json(res, 500, { error: "internal server error" });
+        }
         return;
     }
     // GET /api/sessions/:id — session details
@@ -147,6 +156,11 @@ export async function handleRequest(req, res) {
     if (pathname === "/api/config" && method === "GET") {
         const defaultCwd = process.env.DEFAULT_CWD ?? process.cwd();
         json(res, 200, { browseRoot: BROWSE_ROOT, defaultCwd });
+        return;
+    }
+    // GET /api/providers — list registered providers
+    if (pathname === "/api/providers" && method === "GET") {
+        json(res, 200, listProviders());
         return;
     }
     // GET /api/browse — list subdirectories for folder picker
