@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
-import { requirePassword } from "./auth.js";
+import { requirePassword, getRequestIp } from "./auth.js";
 import { handleRequest } from "./routes.js";
 import { handleWsConnection, extractSessionIdFromPath } from "./ws.js";
 
@@ -43,8 +43,23 @@ async function serveStatic(pathname: string): Promise<{ data: Buffer; contentTyp
   }
 }
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
+function setSecurityHeaders(res: import("node:http").ServerResponse): void {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    res.setHeader(key, value);
+  }
+}
+
 export function createApp() {
   const server = createHttpServer(async (req, res) => {
+    setSecurityHeaders(res);
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const pathname = url.pathname;
 
@@ -79,10 +94,28 @@ export function createApp() {
   });
 
   // WebSocket upgrade handling — authentication happens via first message, not URL
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 }); // 1 MB
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
+    // Origin validation — block cross-origin WebSocket hijacking
+    const origin = req.headers.origin;
+    if (origin) {
+      const host = req.headers.host;
+      try {
+        const originHost = new URL(origin).host;
+        if (host && originHost !== host) {
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      } catch {
+        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+    }
 
     // Extract session ID from path (auth happens after upgrade via first message)
     const sessionId = extractSessionIdFromPath(url.pathname);
@@ -92,8 +125,9 @@ export function createApp() {
       return;
     }
 
+    const ip = getRequestIp(req);
     wss.handleUpgrade(req, socket, head, (ws) => {
-      handleWsConnection(ws, sessionId);
+      handleWsConnection(ws, sessionId, ip);
     });
   });
 

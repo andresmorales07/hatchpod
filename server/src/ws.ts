@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import { authenticateToken } from "./auth.js";
+
 import { getSession, broadcast, handleApproval, sendFollowUp, interruptSession } from "./sessions.js";
 import type { ClientMessage, ServerMessage } from "./types.js";
 
@@ -12,7 +13,7 @@ export function extractSessionIdFromPath(pathname: string): string | null {
   return match ? match[1] : null;
 }
 
-export function handleWsConnection(ws: WebSocket, sessionId: string): void {
+export function handleWsConnection(ws: WebSocket, sessionId: string, ip?: string): void {
   // First message must be { type: "auth", token: "..." }
   // This avoids leaking the token in the URL / query string.
   const authTimeout = setTimeout(() => {
@@ -34,10 +35,12 @@ export function handleWsConnection(ws: WebSocket, sessionId: string): void {
       return;
     }
 
-    if (parsed.type !== "auth" || !parsed.token || !authenticateToken(parsed.token)) {
-      const msg: ServerMessage = { type: "error", message: "unauthorized" };
+    const authResult = authenticateToken(parsed.token ?? "", ip);
+    if (parsed.type !== "auth" || !parsed.token || authResult !== true) {
+      const message = authResult === "rate_limited" ? "too many failed attempts" : "unauthorized";
+      const msg: ServerMessage = { type: "error", message };
       ws.send(JSON.stringify(msg));
-      ws.close(4001, "unauthorized");
+      ws.close(4001, message);
       return;
     }
 

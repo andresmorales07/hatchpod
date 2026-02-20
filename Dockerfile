@@ -1,4 +1,5 @@
-FROM debian:bookworm-slim
+# Pin base image digest for supply-chain integrity (update periodically)
+FROM debian:bookworm-slim@sha256:98f4b71de414932439ac6ac690d7060df1f27161073c5036a7553723881bffbe
 
 ARG S6_OVERLAY_VERSION=3.2.0.2
 ARG TTYD_VERSION=1.7.7
@@ -41,8 +42,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (Python package manager, provides uvx)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uvx /usr/local/bin/uvx
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:4cac394b6b72846f8a85a7a0e577c6d61d4e17fe2ccee65d9451a8b3c9efb4ac /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:4cac394b6b72846f8a85a7a0e577c6d61d4e17fe2ccee65d9451a8b3c9efb4ac /uvx /usr/local/bin/uvx
 
 # Install .NET SDKs — side-by-side in /usr/share/dotnet (channels set via DOTNET_CHANNELS build arg)
 RUN curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
@@ -69,6 +70,9 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 # all container launches. Sysbox on the host already provides equivalent isolation.
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH}" -o /usr/bin/runc \
+    && curl -fsSL "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.sha256sum" -o /tmp/runc.sha256sum \
+    && cd /usr/bin && grep "runc.${ARCH}" /tmp/runc.sha256sum | sha256sum -c - \
+    && rm /tmp/runc.sha256sum \
     && chmod +x /usr/bin/runc
 
 # Install GitHub CLI
@@ -82,8 +86,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Tailscale (optional VPN — activated by setting TS_AUTHKEY at runtime)
-COPY --from=docker.io/tailscale/tailscale:latest /usr/local/bin/tailscale /usr/local/bin/tailscale
-COPY --from=docker.io/tailscale/tailscale:latest /usr/local/bin/tailscaled /usr/local/bin/tailscaled
+COPY --from=docker.io/tailscale/tailscale:latest@sha256:95e528798bebe75f39b10e74e7051cf51188ee615934f232ba7ad06a3390ffa1 /usr/local/bin/tailscale /usr/local/bin/tailscale
+COPY --from=docker.io/tailscale/tailscale:latest@sha256:95e528798bebe75f39b10e74e7051cf51188ee615934f232ba7ad06a3390ffa1 /usr/local/bin/tailscaled /usr/local/bin/tailscaled
 
 # Install s6-overlay v3
 ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp/

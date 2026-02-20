@@ -79,15 +79,26 @@ describe("Session CRUD", () => {
     expect(res.status).toBe(400);
   });
 
-  it("creates session with custom cwd", async () => {
+  it("creates session with custom cwd within workspace", async () => {
+    const cwd = process.cwd(); // BROWSE_ROOT defaults to cwd
     const res = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "cwd test", provider: "test", cwd: "/tmp" }),
+      body: JSON.stringify({ prompt: "cwd test", provider: "test", cwd }),
     });
     expect(res.status).toBe(201);
     const { id } = await res.json();
 
     const session = await waitForStatus(id, "completed");
-    expect(session.cwd).toBe("/tmp");
+    expect(session.cwd).toBe(cwd);
+  });
+
+  it("rejects cwd outside workspace", async () => {
+    const res = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "cwd test", provider: "test", cwd: "/tmp" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("cwd must be within the workspace");
   });
 });

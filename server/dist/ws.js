@@ -6,7 +6,7 @@ export function extractSessionIdFromPath(pathname) {
     const match = pathname.match(WS_PATH_RE);
     return match ? match[1] : null;
 }
-export function handleWsConnection(ws, sessionId) {
+export function handleWsConnection(ws, sessionId, ip) {
     // First message must be { type: "auth", token: "..." }
     // This avoids leaking the token in the URL / query string.
     const authTimeout = setTimeout(() => {
@@ -26,10 +26,12 @@ export function handleWsConnection(ws, sessionId) {
             ws.close(4002, "invalid JSON");
             return;
         }
-        if (parsed.type !== "auth" || !parsed.token || !authenticateToken(parsed.token)) {
-            const msg = { type: "error", message: "unauthorized" };
+        const authResult = authenticateToken(parsed.token ?? "", ip);
+        if (parsed.type !== "auth" || !parsed.token || authResult !== true) {
+            const message = authResult === "rate_limited" ? "too many failed attempts" : "unauthorized";
+            const msg = { type: "error", message };
             ws.send(JSON.stringify(msg));
-            ws.close(4001, "unauthorized");
+            ws.close(4001, message);
             return;
         }
         // Auth succeeded — set up the session connection

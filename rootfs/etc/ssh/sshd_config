@@ -9,3 +9,20 @@ X11Forwarding no
 PrintMotd no
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/openssh/sftp-server
+
+# Brute-force protection
+MaxAuthTries 5
+LoginGraceTime 30
+
+# Session limits
+MaxSessions 5
+MaxStartups 10:30:60
+
+# Disable TCP and Unix socket forwarding
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+GatewayPorts no
+
+# Idle session detection — disconnect after 5 min of no activity
+ClientAliveInterval 60
+ClientAliveCountMax 5
