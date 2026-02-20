@@ -63,7 +63,10 @@ function getClientIp(req: IncomingMessage): string {
 
 export function authenticateRequest(req: IncomingMessage): boolean | "rate_limited" {
   const ip = getClientIp(req);
-  if (isRateLimited(ip)) return "rate_limited";
+  if (isRateLimited(ip)) {
+    console.warn(`Rate limited: HTTP auth attempt from ${ip}`);
+    return "rate_limited";
+  }
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     recordFailedAttempt(ip);
@@ -75,7 +78,10 @@ export function authenticateRequest(req: IncomingMessage): boolean | "rate_limit
 }
 
 export function authenticateToken(token: string, ip: string): boolean | "rate_limited" {
-  if (isRateLimited(ip)) return "rate_limited";
+  if (isRateLimited(ip)) {
+    console.warn(`Rate limited: token auth attempt from ${ip}`);
+    return "rate_limited";
+  }
   const valid = safeCompare(token, API_PASSWORD!);
   if (!valid) recordFailedAttempt(ip);
   return valid;

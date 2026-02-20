@@ -107,18 +107,21 @@ export function createApp() {
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
-    // Origin validation — block cross-origin WebSocket hijacking
+    // Origin validation — block cross-origin WebSocket hijacking from browsers.
+    // Non-browser clients may omit the Origin header; auth via first message is the primary gate.
     const origin = req.headers.origin;
     if (origin) {
       const host = req.headers.host;
       try {
         const originHost = new URL(origin).host;
         if (host && originHost !== host) {
+          console.warn(`WebSocket rejected: cross-origin from ${origin} (expected host: ${host})`);
           socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
           socket.destroy();
           return;
         }
-      } catch {
+      } catch (err) {
+        console.warn(`WebSocket rejected: malformed origin "${origin}":`, err);
         socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
         socket.destroy();
         return;

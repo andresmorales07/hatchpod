@@ -64,10 +64,11 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
-# Downgrade runc to 1.1.x — runc >=1.2 added a "safe procfs" check (CVE-2025-52881)
+# Downgrade runc to 1.1.x — runc >=1.2 added a "safe procfs" check
 # that uses openat2 to verify /proc is not a cross-device mount. Inside Sysbox containers,
 # /proc/sys is a FUSE mount (sysboxfs), which triggers "unsafe procfs detected" and blocks
-# all container launches. Sysbox on the host already provides equivalent isolation.
+# all container launches. Staying on 1.1.x accepts known CVEs (see .trivyignore)
+# in exchange for Sysbox compatibility.
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH}" -o /tmp/runc.${ARCH} \
     && curl -fsSL "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.sha256sum" -o /tmp/runc.sha256sum \

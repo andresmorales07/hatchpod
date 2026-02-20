@@ -11,8 +11,8 @@ CVE-2025-55247
 CVE-2025-58183
 CVE-2025-47907
 
-# Go stdlib CVEs in bundled Tailscale and Docker binaries — fixed by updating
-# pinned image digests. Tracked for periodic update.
+# Go stdlib CVEs in bundled Tailscale and Docker binaries — present in the
+# currently pinned image digests. Will be resolved by updating to newer digests.
 CVE-2025-61726
 CVE-2025-61728
 CVE-2025-61729
