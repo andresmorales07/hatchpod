@@ -3,7 +3,7 @@ import type { WebSocket } from "ws";
 
 export type SessionStatus =
   | "idle" | "starting" | "running" | "waiting_for_approval"
-  | "completed" | "interrupted" | "error";
+  | "completed" | "interrupted" | "error" | "history";
 
 export interface Session {
   id: string;
@@ -21,6 +21,7 @@ export interface Session {
   numTurns: number;
   lastError: string | null;
   pendingApproval: PendingApproval | null;
+  alwaysAllowedTools: Set<string>;
   clients: Set<WebSocket>;
 }
 
@@ -45,9 +46,13 @@ export interface SessionSummaryDTO {
   id: string;
   status: SessionStatus;
   createdAt: string;
+  lastModified: string;
   numTurns: number;
   totalCostUsd: number;
   hasPendingApproval: boolean;
+  provider: string;
+  slug: string | null;
+  summary: string | null;
 }
 
 export interface PendingApproval {
@@ -59,7 +64,7 @@ export interface PendingApproval {
 
 export type ClientMessage =
   | { type: "prompt"; text: string }
-  | { type: "approve"; toolUseId: string; answers?: Record<string, string> }
+  | { type: "approve"; toolUseId: string; alwaysAllow?: boolean; answers?: Record<string, string> }
   | { type: "deny"; toolUseId: string; message?: string }
   | { type: "interrupt" };
 
@@ -80,4 +85,5 @@ export interface CreateSessionRequest {
   model?: string;
   cwd?: string;
   allowedTools?: string[];
+  resumeSessionId?: string;
 }

@@ -472,6 +472,16 @@ body {
   cursor: pointer;
 }
 
+.tool-approval .approve-always {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--warning);
+  color: #000;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .tool-approval .deny {
   padding: 0.5rem 1rem;
   border-radius: var(--radius);
@@ -714,6 +724,12 @@ body {
 .status.completed {
   background: rgba(136, 146, 164, 0.15);
   color: var(--text-muted);
+}
+
+.status.history {
+  background: rgba(136, 146, 164, 0.1);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* === Folder Picker === */
