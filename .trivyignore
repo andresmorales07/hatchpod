@@ -1,2 +1,24 @@
 # s6-overlay requires root as PID 1 — USER root is intentional
 DS002
+
+# runc v1.1.15 — deliberately pinned to old version for Sysbox compatibility.
+# runc >=1.2 added a "safe procfs" check that breaks DinD inside Sysbox containers
+# because /proc/sys is a FUSE mount (sysboxfs). See Dockerfile for details.
+CVE-2024-24790
+CVE-2024-34156
+CVE-2025-52881
+CVE-2025-55247
+CVE-2025-58183
+CVE-2025-47907
+
+# Go stdlib CVEs in bundled Tailscale and Docker binaries — fixed by updating
+# pinned image digests. Tracked for periodic update.
+CVE-2025-61726
+CVE-2025-61728
+CVE-2025-61729
+CVE-2025-61730
+CVE-2025-65637
+CVE-2025-68121
+
+# .NET SDK — fixed in newer SDK versions, update via DOTNET_CHANNELS build arg
+CVE-2025-26646
