@@ -4,12 +4,14 @@ import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
 import {
   listSessions,
+  listSessionsWithHistory,
   getSession,
   sessionToDTO,
   getSessionCount,
   createSession,
   interruptSession,
 } from "./sessions.js";
+import { listProviders } from "./providers/index.js";
 import type { CreateSessionRequest } from "./types.js";
 
 const startTime = Date.now();
@@ -138,9 +140,16 @@ export async function handleRequest(
     return;
   }
 
-  // GET /api/sessions — list sessions
+  // GET /api/sessions — list sessions (optionally filtered by CWD for history)
   if (pathname === "/api/sessions" && method === "GET") {
-    json(res, 200, listSessions());
+    const cwd = url.searchParams.get("cwd") ?? undefined;
+    try {
+      const sessions = await listSessionsWithHistory(cwd);
+      json(res, 200, sessions);
+    } catch (err) {
+      console.error("Failed to list sessions:", err);
+      json(res, 500, { error: "internal server error" });
+    }
     return;
   }
 
@@ -171,6 +180,12 @@ export async function handleRequest(
   if (pathname === "/api/config" && method === "GET") {
     const defaultCwd = process.env.DEFAULT_CWD ?? process.cwd();
     json(res, 200, { browseRoot: BROWSE_ROOT, defaultCwd });
+    return;
+  }
+
+  // GET /api/providers — list registered providers
+  if (pathname === "/api/providers" && method === "GET") {
+    json(res, 200, listProviders());
     return;
   }
 
