@@ -3,6 +3,8 @@ import { defineConfig } from '@playwright/test';
 const username = process.env.TTYD_USERNAME || 'hatchpod';
 const password = process.env.TTYD_PASSWORD || 'changeme';
 const apiPassword = process.env.API_PASSWORD || 'changeme';
+const ttydPort = process.env.TTYD_PORT || '7681';
+const apiPort = process.env.API_PORT || '8080';
 
 export default defineConfig({
   testDir: './tests',
@@ -16,7 +18,7 @@ export default defineConfig({
       name: 'ttyd-chromium',
       testMatch: 'ttyd.spec.ts',
       use: {
-        baseURL: 'http://localhost:7681',
+        baseURL: `http://localhost:${ttydPort}`,
         browserName: 'chromium',
         trace: 'on-first-retry',
         httpCredentials: {
@@ -30,7 +32,7 @@ export default defineConfig({
       name: 'ttyd-firefox',
       testMatch: 'ttyd.spec.ts',
       use: {
-        baseURL: 'http://localhost:7681',
+        baseURL: `http://localhost:${ttydPort}`,
         browserName: 'firefox',
         trace: 'on-first-retry',
         httpCredentials: {
@@ -44,7 +46,7 @@ export default defineConfig({
       name: 'api',
       testMatch: 'api.spec.ts',
       use: {
-        baseURL: 'http://localhost:8080',
+        baseURL: `http://localhost:${apiPort}`,
         browserName: 'chromium',
         trace: 'on-first-retry',
         extraHTTPHeaders: {
@@ -56,7 +58,7 @@ export default defineConfig({
       name: 'web-ui',
       testMatch: 'web-ui.spec.ts',
       use: {
-        baseURL: 'http://localhost:8080',
+        baseURL: `http://localhost:${apiPort}`,
         browserName: 'chromium',
         trace: 'on-first-retry',
       },
@@ -65,7 +67,7 @@ export default defineConfig({
       name: 'web-ui-firefox',
       testMatch: 'web-ui.spec.ts',
       use: {
-        baseURL: 'http://localhost:8080',
+        baseURL: `http://localhost:${apiPort}`,
         browserName: 'firefox',
         trace: 'on-first-retry',
       },
@@ -74,7 +76,7 @@ export default defineConfig({
       name: 'static',
       testMatch: 'static.spec.ts',
       use: {
-        baseURL: 'http://localhost:8080',
+        baseURL: `http://localhost:${apiPort}`,
         browserName: 'chromium',
         trace: 'on-first-retry',
       },
@@ -83,7 +85,7 @@ export default defineConfig({
       name: 'ws',
       testMatch: 'ws.spec.ts',
       use: {
-        baseURL: 'http://localhost:8080',
+        baseURL: `http://localhost:${apiPort}`,
         browserName: 'chromium',
         trace: 'on-first-retry',
       },
