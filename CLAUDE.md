@@ -73,22 +73,37 @@ Two Docker volumes persist state across container restarts:
 │   │       ├── types.ts    # NormalizedMessage, ProviderAdapter interface
 │   │       ├── claude-adapter.ts  # Claude SDK adapter (sole SDK import)
 │   │       └── index.ts    # Provider registry
-│   └── ui/                 # React web UI (Vite)
+│   └── ui/                 # React web UI (Vite + Tailwind CSS v4 + shadcn/ui)
 │       ├── package.json    # UI dependencies
-│       ├── vite.config.ts  # Vite config (builds to ../public/)
+│       ├── components.json # shadcn/ui config (new-york style, neutral base)
+│       ├── vite.config.ts  # Vite config (builds to ../public/, @/ path alias)
 │       └── src/
 │           ├── main.tsx            # React entry point
 │           ├── App.tsx             # App shell, login, sidebar layout
-│           ├── styles.css          # All styles (dark theme)
+│           ├── globals.css         # Tailwind imports + shadcn theme tokens (dark theme)
 │           ├── types.ts            # UI-side normalized message types
+│           ├── lib/
+│           │   └── utils.ts        # cn() class merge utility (tailwind-merge + clsx)
 │           ├── hooks/
 │           │   └── useSession.ts   # WebSocket session hook
 │           └── components/
-│               ├── SessionList.tsx  # Session list + new session form
-│               ├── ChatView.tsx     # Chat message view
-│               ├── MessageBubble.tsx # Message rendering
-│               ├── ToolApproval.tsx  # Tool approval UI
-│               └── FolderPicker.tsx  # Breadcrumb folder picker
+│               ├── SessionList.tsx          # Session list + new session form
+│               ├── ChatView.tsx             # Chat message view with auto-scroll
+│               ├── MessageBubble.tsx         # Message rendering
+│               ├── Markdown.tsx             # Markdown rendering (react-markdown + PrismLight)
+│               ├── ToolApproval.tsx          # Tool approval UI
+│               ├── FolderPicker.tsx          # Breadcrumb folder picker
+│               ├── SlashCommandDropdown.tsx  # Slash command autocomplete
+│               ├── ThinkingBlock.tsx         # Expandable thinking/reasoning display
+│               ├── ThinkingIndicator.tsx     # Animated thinking spinner
+│               └── ui/                      # shadcn/ui primitives
+│                   ├── badge.tsx
+│                   ├── button.tsx
+│                   ├── card.tsx
+│                   ├── dialog.tsx
+│                   ├── input.tsx
+│                   ├── scroll-area.tsx
+│                   └── tooltip.tsx
 └── rootfs/                 # Files copied into the container at /
     └── etc/
         ├── ssh/sshd_config

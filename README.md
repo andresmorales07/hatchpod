@@ -61,7 +61,7 @@ claude                          # follow the login link that appears
 <table>
 <tr><td><strong>Category</strong></td><td><strong>Software</strong></td><td><strong>Purpose</strong></td></tr>
 <tr><td rowspan="2">🤖 <strong>AI</strong></td><td>Claude Code</td><td>Anthropic's CLI agent</td></tr>
-<tr><td>Web UI + API</td><td>Claude Code web interface and REST/WebSocket API (port 8080)</td></tr>
+<tr><td>Web UI + API</td><td>Claude Code web interface (Tailwind CSS v4 + shadcn/ui) and REST/WebSocket API (port 8080)</td></tr>
 <tr><td rowspan="2">⚡ <strong>Runtimes</strong></td><td>Node.js 20 LTS</td><td>MCP servers (npx)</td></tr>
 <tr><td>Python 3 + venv</td><td>MCP servers (uvx)</td></tr>
 <tr><td rowspan="2">📦 <strong>Package Mgrs</strong></td><td>npm</td><td>Node packages (global prefix persisted)</td></tr>
