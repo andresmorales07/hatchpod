@@ -9,11 +9,12 @@ interface Props {
   slashCommands: SlashCommand[];
   isDisabled: boolean;
   isRunning: boolean;
+  viewerMode?: boolean;
   onSend: (text: string) => boolean;
   onInterrupt: () => void;
 }
 
-export function Composer({ slashCommands, isDisabled, isRunning, onSend, onInterrupt }: Props) {
+export function Composer({ slashCommands, isDisabled, isRunning, viewerMode, onSend, onInterrupt }: Props) {
   const [input, setInput] = useState("");
   const [dropdownIndex, setDropdownIndex] = useState(0);
 
@@ -27,8 +28,12 @@ export function Composer({ slashCommands, isDisabled, isRunning, onSend, onInter
     setInput(`/${cmd.name} `);
   }, []);
 
+  const effectiveDisabled = viewerMode ? false : isDisabled;
+  const effectiveRunning = viewerMode ? false : isRunning;
+  const placeholder = viewerMode ? "Type to resume this session..." : "Send a message...";
+
   const handleSubmit = () => {
-    if (isDisabled || !input.trim()) return;
+    if (effectiveDisabled || !input.trim()) return;
     if (onSend(input.trim())) {
       setInput("");
     }
@@ -59,13 +64,13 @@ export function Composer({ slashCommands, isDisabled, isRunning, onSend, onInter
           value={input}
           onChange={(e) => { setInput(e.target.value); setDropdownIndex(0); }}
           onKeyDown={handleKeyDown}
-          placeholder="Send a message..."
+          placeholder={placeholder}
           minRows={1}
           maxRows={8}
-          disabled={isDisabled}
+          disabled={effectiveDisabled}
           className="flex-1 px-2 py-1.5 bg-transparent text-foreground text-sm font-[inherit] resize-none outline-none leading-snug placeholder:text-muted-foreground disabled:opacity-50"
         />
-        {isRunning ? (
+        {effectiveRunning ? (
           <Button size="icon-sm" variant="destructive" onClick={onInterrupt} className="rounded-lg shrink-0">
             <Square className="size-4" />
           </Button>
