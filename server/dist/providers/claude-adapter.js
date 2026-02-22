@@ -225,14 +225,18 @@ export class ClaudeAdapter {
     async getSessionHistory(sessionId) {
         const { findSessionFile } = await import("../session-history.js");
         const filePath = await findSessionFile(sessionId);
-        if (!filePath)
-            return [];
+        if (!filePath) {
+            const err = new Error(`Session file not found for ${sessionId}`);
+            err.name = "SessionNotFound";
+            throw err;
+        }
         const { createReadStream } = await import("node:fs");
         const { createInterface } = await import("node:readline");
         const stream = createReadStream(filePath, { encoding: "utf-8" });
         const rl = createInterface({ input: stream, crlfDelay: Infinity });
         const messages = [];
         let messageIndex = 0;
+        let skippedLines = 0;
         try {
             for await (const line of rl) {
                 if (!line.trim())
@@ -242,6 +246,7 @@ export class ClaudeAdapter {
                     parsed = JSON.parse(line);
                 }
                 catch {
+                    skippedLines++;
                     continue;
                 }
                 const type = parsed.type;
@@ -264,6 +269,9 @@ export class ClaudeAdapter {
             }
         }
         finally {
+            if (skippedLines > 0) {
+                console.warn(`getSessionHistory(${sessionId}): skipped ${skippedLines} unparseable JSONL line(s) in ${filePath}`);
+            }
             rl.close();
             stream.destroy();
         }

@@ -177,11 +177,16 @@ export async function handleRequest(
   const historyMatch = pathname.match(SESSION_HISTORY_RE);
   if (historyMatch && method === "GET") {
     const sessionId = historyMatch[1];
+    if (!UUID_RE.test(sessionId)) {
+      json(res, 400, { error: "invalid session ID" });
+      return;
+    }
     const provider = url.searchParams.get("provider") ?? "claude";
     let adapter;
     try {
       adapter = getProvider(provider);
-    } catch {
+    } catch (err) {
+      console.warn(`History endpoint: unknown provider "${provider}":`, err);
       json(res, 400, { error: "unknown provider" });
       return;
     }
@@ -193,6 +198,10 @@ export async function handleRequest(
       const messages = await adapter.getSessionHistory(sessionId);
       json(res, 200, messages);
     } catch (err) {
+      if (err instanceof Error && err.name === "SessionNotFound") {
+        json(res, 404, { error: "session history not found" });
+        return;
+      }
       console.error(`Failed to get session history for ${sessionId}:`, err);
       json(res, 500, { error: "internal server error" });
     }

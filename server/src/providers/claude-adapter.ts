@@ -286,7 +286,11 @@ export class ClaudeAdapter implements ProviderAdapter {
   async getSessionHistory(sessionId: string): Promise<NormalizedMessage[]> {
     const { findSessionFile } = await import("../session-history.js");
     const filePath = await findSessionFile(sessionId);
-    if (!filePath) return [];
+    if (!filePath) {
+      const err = new Error(`Session file not found for ${sessionId}`);
+      err.name = "SessionNotFound";
+      throw err;
+    }
 
     const { createReadStream } = await import("node:fs");
     const { createInterface } = await import("node:readline");
@@ -296,6 +300,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
     const messages: NormalizedMessage[] = [];
     let messageIndex = 0;
+    let skippedLines = 0;
 
     try {
       for await (const line of rl) {
@@ -305,6 +310,7 @@ export class ClaudeAdapter implements ProviderAdapter {
         try {
           parsed = JSON.parse(line);
         } catch {
+          skippedLines++;
           continue;
         }
 
@@ -333,6 +339,11 @@ export class ClaudeAdapter implements ProviderAdapter {
         }
       }
     } finally {
+      if (skippedLines > 0) {
+        console.warn(
+          `getSessionHistory(${sessionId}): skipped ${skippedLines} unparseable JSONL line(s) in ${filePath}`,
+        );
+      }
       rl.close();
       stream.destroy();
     }

@@ -124,10 +124,9 @@ describe("ClaudeAdapter.getSessionHistory", () => {
     });
   });
 
-  it("returns empty array for nonexistent session", async () => {
+  it("throws SessionNotFound for nonexistent session", async () => {
     const adapter = new ClaudeAdapter();
-    const messages = await adapter.getSessionHistory!(randomUUID());
-    expect(messages).toEqual([]);
+    await expect(adapter.getSessionHistory!(randomUUID())).rejects.toThrow(/Session file not found/);
   });
 
   it("indexes messages sequentially", async () => {

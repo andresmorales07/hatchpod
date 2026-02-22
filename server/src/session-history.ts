@@ -185,7 +185,11 @@ export async function findSessionFile(sessionId: string): Promise<string | null>
   let entries: Dirent[];
   try {
     entries = await readdir(base, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code !== "ENOENT") {
+      console.warn(`findSessionFile: failed to read projects directory ${base}:`, err);
+    }
     return null;
   }
 
@@ -194,7 +198,11 @@ export async function findSessionFile(sessionId: string): Promise<string | null>
     try {
       await stat(filePath);
       return filePath;
-    } catch {
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT") {
+        console.warn(`findSessionFile: unexpected error checking ${filePath}:`, err);
+      }
       continue;
     }
   }

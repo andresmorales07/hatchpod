@@ -51,6 +51,8 @@ let reconnectAttempts = 0;
 let thinkingStart: number | null = null;
 let messageCount = 0;
 let currentSessionId: string | null = null;
+// Explicit flag to prevent connect() from wiping pre-seeded history messages
+let _resuming = false;
 
 function send(msg: unknown): boolean {
   if (ws?.readyState === WebSocket.OPEN) {
@@ -74,12 +76,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   historySessionCwd: null,
 
   connect: (sessionId: string) => {
-    // Disconnect any existing connection (but don't wipe if resuming from history)
-    const preserveMessages = get().messages.length > 0 && get().status === "starting";
+    const shouldPreserve = _resuming;
+    _resuming = false;
     get().disconnect();
     currentSessionId = sessionId;
 
-    if (!preserveMessages) {
+    if (!shouldPreserve) {
       messageCount = 0;
       thinkingStart = null;
       set({
@@ -159,12 +161,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       socket.onclose = () => {
         ws = null;
+        // Only update state if this socket belongs to the current session
+        if (currentSessionId !== sessionId) return;
         set({ connected: false });
-        if (currentSessionId === sessionId && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts);
           reconnectAttempts++;
           reconnectTimer = setTimeout(doConnect, delay);
-        } else if (currentSessionId === sessionId) {
+        } else {
           set({ status: "disconnected", lastError: "Connection lost — reload to reconnect" });
         }
       };
@@ -196,8 +200,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       const cwd = state.historySessionCwd || sessStore.cwd;
       const historyMessages = [...state.messages];
       const historyId = state.historySessionId;
+      // Capture to detect if user navigated away before fetch completes
+      const expectedSessionId = currentSessionId;
 
-      set({ historySessionId: null, historySessionCwd: null, lastError: null });
+      // Clear error but keep historySessionId so retry works on failure
+      set({ lastError: null });
 
       fetch("/api/sessions", {
         method: "POST",
@@ -210,18 +217,24 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         }),
       })
         .then(async (res) => {
+          // Stale closure guard: user switched sessions while fetch was in-flight
+          if (currentSessionId !== expectedSessionId && currentSessionId !== null) return;
           if (res.status === 401) { useAuthStore.getState().logout(); return; }
           if (res.ok) {
             const session = await res.json();
+            // Clear history state now that resume succeeded
+            set({ historySessionId: null, historySessionCwd: null });
             sessStore.setActiveSession(session.id);
             sessStore.fetchSessions();
             // Pre-seed with history messages, then connect WS for new messages
             messageCount = historyMessages.length;
+            _resuming = true;
             set({ messages: historyMessages, status: "starting" });
             currentSessionId = session.id;
             get().connect(session.id);
           } else {
-            set({ lastError: "Failed to resume session" });
+            const errBody = await res.json().catch(() => null);
+            set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})` });
           }
         })
         .catch((err) => {
@@ -282,10 +295,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       if (res.status === 401) { useAuthStore.getState().logout(); return; }
       if (res.ok) {
         const msgs = await res.json();
+        if (!Array.isArray(msgs)) {
+          set({ lastError: "Unexpected response from server" });
+          return;
+        }
         messageCount = msgs.length;
         set({ messages: msgs, status: "history" });
       } else {
-        set({ lastError: "Failed to load session history" });
+        const errBody = await res.json().catch(() => null);
+        set({ lastError: errBody?.error ?? `Failed to load session history (${res.status})` });
       }
     } catch (err) {
       console.error("Failed to load history:", err);

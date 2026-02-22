@@ -48,6 +48,11 @@ export function ChatPage() {
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const fetchedSessionsRef = useRef(false);
+
+  useEffect(() => {
+    fetchedSessionsRef.current = false;
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -58,8 +63,9 @@ export function ChatPage() {
       loadHistory(id, session?.cwd ?? "");
     } else if (sessionStatus !== undefined) {
       connect(id);
-    } else {
-      // Sessions not loaded yet — trigger fetch; effect re-runs when sessionStatus updates
+    } else if (!fetchedSessionsRef.current) {
+      // Sessions not loaded yet — trigger fetch once; effect re-runs when sessionStatus updates
+      fetchedSessionsRef.current = true;
       useSessionsStore.getState().fetchSessions();
     }
     return () => disconnect();
