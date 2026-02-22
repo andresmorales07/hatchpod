@@ -22,15 +22,15 @@ describe("Interruption", () => {
     // Wait briefly for it to start running
     await waitForStatus(id, "running");
 
-    // Interrupt via REST
+    // Delete via REST (interrupts running session, then removes it from the map)
     const deleteRes = await api(`/api/sessions/${id}`, { method: "DELETE" });
     expect(deleteRes.status).toBe(200);
     const body = await deleteRes.json();
-    expect((body as { status: string }).status).toBe("interrupted");
+    expect((body as { status: string }).status).toBe("deleted");
 
-    // Verify final status
-    const session = await waitForStatus(id, "interrupted");
-    expect(session.status).toBe("interrupted");
+    // Verify session is gone (deleted from map → 404)
+    const checkRes = await api(`/api/sessions/${id}`);
+    expect(checkRes.status).toBe(404);
   });
 
   it("interrupts via WebSocket", async () => {

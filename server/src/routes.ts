@@ -9,6 +9,7 @@ import {
   getSessionCount,
   createSession,
   interruptSession,
+  deleteSession,
 } from "./sessions.js";
 import { listProviders } from "./providers/index.js";
 import type { CreateSessionRequest } from "./types.js";
@@ -183,14 +184,14 @@ export async function handleRequest(
     return;
   }
 
-  // DELETE /api/sessions/:id — interrupt session
+  // DELETE /api/sessions/:id — delete session (interrupts if running, then removes)
   if (idMatch && method === "DELETE") {
-    const found = interruptSession(idMatch[1]);
+    const found = deleteSession(idMatch[1]);
     if (!found) {
       json(res, 404, { error: "session not found" });
       return;
     }
-    json(res, 200, { status: "interrupted" });
+    json(res, 200, { status: "deleted" });
     return;
   }
 

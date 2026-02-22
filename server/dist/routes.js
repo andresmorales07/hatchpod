@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
-import { listSessionsWithHistory, getSession, sessionToDTO, getSessionCount, createSession, interruptSession, } from "./sessions.js";
+import { listSessionsWithHistory, getSession, sessionToDTO, getSessionCount, createSession, deleteSession, } from "./sessions.js";
 import { listProviders } from "./providers/index.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
@@ -161,14 +161,14 @@ export async function handleRequest(req, res) {
         json(res, 200, sessionToDTO(session));
         return;
     }
-    // DELETE /api/sessions/:id — interrupt session
+    // DELETE /api/sessions/:id — delete session (interrupts if running, then removes)
     if (idMatch && method === "DELETE") {
-        const found = interruptSession(idMatch[1]);
+        const found = deleteSession(idMatch[1]);
         if (!found) {
             json(res, 404, { error: "session not found" });
             return;
         }
-        json(res, 200, { status: "interrupted" });
+        json(res, 200, { status: "deleted" });
         return;
     }
     // GET /api/config — server configuration for the UI

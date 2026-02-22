@@ -70,7 +70,7 @@ test('interrupts a session', async ({ request }) => {
   const res = await request.delete(`/api/sessions/${id}`);
   expect(res.status()).toBe(200);
   const body = await res.json();
-  expect(body.status).toBe('interrupted');
+  expect(body.status).toBe('deleted');
 });
 
 test('returns 404 for unknown session', async ({ request }) => {

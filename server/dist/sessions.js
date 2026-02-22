@@ -271,6 +271,15 @@ export function interruptSession(id) {
     broadcast(session, { type: "status", status: "interrupted" });
     return true;
 }
+export function deleteSession(id) {
+    const session = sessions.get(id);
+    if (!session)
+        return false;
+    // Interrupt if running, then remove from map
+    interruptSession(id);
+    sessions.delete(id);
+    return true;
+}
 export function handleApproval(session, toolUseId, allow, message, answers, alwaysAllow) {
     if (!session.pendingApproval ||
         session.pendingApproval.toolUseId !== toolUseId)

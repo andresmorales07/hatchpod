@@ -298,6 +298,15 @@ export function interruptSession(id: string): boolean {
   return true;
 }
 
+export function deleteSession(id: string): boolean {
+  const session = sessions.get(id);
+  if (!session) return false;
+  // Interrupt if running, then remove from map
+  interruptSession(id);
+  sessions.delete(id);
+  return true;
+}
+
 export function handleApproval(
   session: Session,
   toolUseId: string,

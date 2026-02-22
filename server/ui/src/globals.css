@@ -39,38 +39,38 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-/* Hatchpod dark theme — maps shadcn tokens to the Hatchpod palette */
+/* Hatchpod dark theme — neutral zinc palette with crimson accent */
 .dark {
-  --background: #1a1a2e;
-  --foreground: #e0e0e0;
-  --card: #16213e;
-  --card-foreground: #e0e0e0;
-  --popover: #16213e;
-  --popover-foreground: #e0e0e0;
+  --background: #0f0f17;
+  --foreground: #fafafa;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
   --primary: #e94560;
   --primary-foreground: #ffffff;
-  --secondary: #0f3460;
-  --secondary-foreground: #e0e0e0;
-  --muted: #16213e;
-  --muted-foreground: #8892a4;
-  --accent: #0f3460;
-  --accent-foreground: #e0e0e0;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
   --destructive: #f87171;
-  --border: #1a3a5c;
-  --input: #0f3460;
+  --border: #27272a;
+  --input: #18181b;
   --ring: #e94560;
   --chart-1: #e94560;
   --chart-2: #4ade80;
   --chart-3: #fbbf24;
   --chart-4: #60a5fa;
   --chart-5: #a78bfa;
-  --sidebar: #16213e;
-  --sidebar-foreground: #e0e0e0;
+  --sidebar: #18181b;
+  --sidebar-foreground: #fafafa;
   --sidebar-primary: #e94560;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #0f3460;
-  --sidebar-accent-foreground: #e0e0e0;
-  --sidebar-border: #1a3a5c;
+  --sidebar-accent: #27272a;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #27272a;
   --sidebar-ring: #e94560;
 }
 

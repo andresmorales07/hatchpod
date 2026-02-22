@@ -1,6 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Shield } from "lucide-react";
+import { useSwipe } from "@/hooks/useSwipe";
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 
 interface Props {
   toolName: string; toolUseId: string; input: unknown;
@@ -93,7 +96,7 @@ function AskUserQuestionUI({ questions, toolUseId, onApprove, onDeny }: {
   };
 
   return (
-    <div className="p-4 mx-4 my-2 bg-card border-2 border-primary rounded-lg">
+    <div className="p-4 mx-4 my-2 bg-card border border-border shadow-lg rounded-xl">
       {questions.map((q, i) => (
         <div key={i} className={cn("mb-4", i === questions.length - 1 && "mb-3")}>
           {q.header && (
@@ -139,28 +142,93 @@ function AskUserQuestionUI({ questions, toolUseId, onApprove, onDeny }: {
         </div>
       ))}
       <div className="flex gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={!allAnswered} className="bg-emerald-500 text-black hover:bg-emerald-400">Submit</Button>
-        <Button size="sm" variant="destructive" onClick={() => onDeny(toolUseId)}>Dismiss</Button>
+        <Button size="sm" onClick={handleSubmit} disabled={!allAnswered} className="h-10 bg-emerald-500 text-black hover:bg-emerald-400">Submit</Button>
+        <Button size="sm" variant="destructive" onClick={() => onDeny(toolUseId)} className="h-10">Dismiss</Button>
+      </div>
+    </div>
+  );
+}
+
+function SwipeableToolApproval({ toolName, toolUseId, input, onApprove, onApproveAlways, onDeny }: Props) {
+  const [offsetX, setOffsetX] = useState(0);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const swipe = useSwipe({
+    threshold: 80,
+    onSwipeRight: () => { setOffsetX(0); onApprove(toolUseId); },
+    onSwipeLeft: () => { setOffsetX(0); onDeny(toolUseId); },
+    onProgress: (dx) => setOffsetX(dx),
+    onCancel: () => setOffsetX(0),
+  });
+
+  const approveVisible = offsetX > 10;
+  const denyVisible = offsetX < -10;
+  const opacity = Math.min(Math.abs(offsetX) / 80, 1);
+
+  return (
+    <div className="relative mx-4 my-2 overflow-hidden rounded-xl">
+      {/* Green approve hint */}
+      <div
+        className="absolute inset-0 rounded-xl bg-emerald-500/30 flex items-center pl-4"
+        style={{ opacity: approveVisible ? opacity : 0 }}
+        aria-hidden
+      >
+        <span className="text-emerald-400 font-semibold text-sm">Approve</span>
+      </div>
+      {/* Red deny hint */}
+      <div
+        className="absolute inset-0 rounded-xl bg-destructive/30 flex items-center justify-end pr-4"
+        style={{ opacity: denyVisible ? opacity : 0 }}
+        aria-hidden
+      >
+        <span className="text-destructive font-semibold text-sm">Deny</span>
+      </div>
+      <div
+        ref={cardRef}
+        {...swipe}
+        style={{ transform: `translateX(${offsetX}px)`, transition: offsetX === 0 ? "transform 0.2s ease" : "none" }}
+        className="bg-card border border-border shadow-lg rounded-xl p-4 touch-pan-y"
+      >
+        <div className="font-semibold text-amber-400 mb-2 flex items-center gap-2"><Shield className="size-4" />Tool: {toolName}</div>
+        <div className="font-mono text-xs text-muted-foreground whitespace-pre-wrap max-h-[200px] overflow-y-auto mb-3">
+          {JSON.stringify(input, null, 2)}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => onApprove(toolUseId)} className="h-10 bg-emerald-500 text-black hover:bg-emerald-400">Approve</Button>
+          <Button size="sm" onClick={() => onApproveAlways(toolUseId)} className="h-10 bg-amber-400 text-black hover:bg-amber-300">Always Allow</Button>
+          <Button size="sm" variant="destructive" onClick={() => onDeny(toolUseId)} className="h-10">Deny</Button>
+        </div>
       </div>
     </div>
   );
 }
 
 export function ToolApproval({ toolName, toolUseId, input, onApprove, onApproveAlways, onDeny }: Props) {
+  const isDesktop = useIsDesktop();
+
   if (toolName === "AskUserQuestion" && isAskUserQuestion(input)) {
     return <AskUserQuestionUI questions={input.questions} toolUseId={toolUseId} onApprove={onApprove} onDeny={onDeny} />;
   }
 
+  if (!isDesktop) {
+    return (
+      <SwipeableToolApproval
+        toolName={toolName} toolUseId={toolUseId} input={input}
+        onApprove={onApprove} onApproveAlways={onApproveAlways} onDeny={onDeny}
+      />
+    );
+  }
+
   return (
-    <div className="p-4 mx-4 my-2 bg-card border-2 border-amber-400 rounded-lg">
-      <div className="font-semibold text-amber-400 mb-2">Tool: {toolName}</div>
+    <div className="p-4 mx-4 my-2 bg-card border border-border shadow-lg rounded-xl">
+      <div className="font-semibold text-amber-400 mb-2 flex items-center gap-2"><Shield className="size-4" />Tool: {toolName}</div>
       <div className="font-mono text-xs text-muted-foreground whitespace-pre-wrap max-h-[200px] overflow-y-auto mb-3">
         {JSON.stringify(input, null, 2)}
       </div>
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => onApprove(toolUseId)} className="bg-emerald-500 text-black hover:bg-emerald-400">Approve</Button>
-        <Button size="sm" onClick={() => onApproveAlways(toolUseId)} className="bg-amber-400 text-black hover:bg-amber-300">Always Allow</Button>
-        <Button size="sm" variant="destructive" onClick={() => onDeny(toolUseId)}>Deny</Button>
+        <Button size="sm" onClick={() => onApprove(toolUseId)} className="h-10 bg-emerald-500 text-black hover:bg-emerald-400">Approve</Button>
+        <Button size="sm" onClick={() => onApproveAlways(toolUseId)} className="h-10 bg-amber-400 text-black hover:bg-amber-300">Always Allow</Button>
+        <Button size="sm" variant="destructive" onClick={() => onDeny(toolUseId)} className="h-10">Deny</Button>
       </div>
     </div>
   );
