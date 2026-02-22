@@ -239,6 +239,17 @@ export class SessionWatcher {
     }
   }
 
+  /**
+   * Broadcast a ServerMessage to all subscribed clients of a session.
+   * Used by sessions.ts to push status/approval updates through the
+   * watcher's centralized client tracking.
+   */
+  broadcastToSubscribers(sessionId: string, msg: ServerMessage): void {
+    const watched = this.sessions.get(sessionId);
+    if (!watched) return;
+    this.broadcast(watched, msg);
+  }
+
   /** Broadcast a message to all clients of a watched session. */
   private broadcast(watched: WatchedSession, msg: ServerMessage): void {
     const payload = JSON.stringify(msg);

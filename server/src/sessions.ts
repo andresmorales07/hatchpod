@@ -1,44 +1,55 @@
 import { getProvider } from "./providers/index.js";
-import type { NormalizedMessage, ProviderSessionResult } from "./providers/types.js";
-import type { Session, CreateSessionRequest, ServerMessage, SessionSummaryDTO, SessionDTO } from "./types.js";
-import type { WebSocket } from "ws";
+import type { ProviderAdapter, NormalizedMessage, ProviderSessionResult, PermissionModeCommon } from "./providers/types.js";
+import type { ActiveSession, CreateSessionRequest, ServerMessage, SessionSummaryDTO } from "./types.js";
+import { SessionWatcher } from "./session-watcher.js";
 import { randomUUID } from "node:crypto";
 
-const sessions = new Map<string, Session>();
+// ── ActiveSession map (runtime handles for API-driven sessions) ──
+
+const sessions = new Map<string, ActiveSession>();
 
 const MAX_SESSIONS = 50;
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // run every 5 minutes
 
-// Periodically evict finished sessions older than SESSION_TTL_MS
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, s] of sessions) {
-    const isFinished = s.status === "completed" || s.status === "error" || s.status === "interrupted";
-    const isAbandonedIdle = s.status === "idle" && s.clients.size === 0;
-    if ((isFinished || isAbandonedIdle) && s.clients.size === 0 && now - s.createdAt.getTime() > SESSION_TTL_MS) {
-      sessions.delete(id);
-    }
-  }
-}, CLEANUP_INTERVAL_MS).unref();
+// ── SessionWatcher singleton ──
+
+let watcher: SessionWatcher | null = null;
+
+/**
+ * Initialize the SessionWatcher singleton. Call once at server startup.
+ * The adapter is used to resolve JSONL file paths and normalize lines.
+ */
+export function initWatcher(adapter: ProviderAdapter): SessionWatcher {
+  if (watcher) return watcher;
+  watcher = new SessionWatcher(adapter);
+  watcher.start();
+  return watcher;
+}
+
+/**
+ * Return the SessionWatcher singleton.
+ * Throws if initWatcher() hasn't been called yet.
+ */
+export function getWatcher(): SessionWatcher {
+  if (!watcher) throw new Error("SessionWatcher not initialized — call initWatcher() first");
+  return watcher;
+}
+
+// ── Session listing ──
 
 export function listSessions(): SessionSummaryDTO[] {
-  return Array.from(sessions.values()).map((s) => {
-    const lastModified = s.lastActivityAt.toISOString();
-    return {
-      id: s.id,
-      status: s.status,
-      createdAt: s.createdAt.toISOString(),
-      lastModified,
-      numTurns: s.numTurns,
-      totalCostUsd: s.totalCostUsd,
-      hasPendingApproval: s.pendingApproval !== null,
-      provider: s.provider,
-      slug: null,
-      summary: null,
-      cwd: s.cwd,
-    };
-  });
+  return Array.from(sessions.values()).map((s) => ({
+    id: s.sessionId,
+    status: s.status,
+    createdAt: new Date().toISOString(), // ActiveSession has no createdAt — approximate
+    lastModified: new Date().toISOString(),
+    numTurns: 0,
+    totalCostUsd: 0,
+    hasPendingApproval: s.pendingApproval !== null,
+    provider: s.provider,
+    slug: null,
+    summary: null,
+    cwd: s.cwd,
+  }));
 }
 
 export async function listSessionsWithHistory(cwd?: string): Promise<SessionSummaryDTO[]> {
@@ -56,14 +67,12 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
   // Build set of provider session IDs that are already live
   const liveProviderIds = new Set<string>();
   for (const s of sessions.values()) {
-    if (s.providerSessionId) liveProviderIds.add(s.providerSessionId);
+    if (s.sessionId) liveProviderIds.add(s.sessionId);
   }
 
   // Enrich live sessions with slug/summary/cwd from history
   for (const live of liveSessions) {
-    const session = sessions.get(live.id);
-    if (!session?.providerSessionId) continue;
-    const histMatch = history.find((h) => h.id === session.providerSessionId);
+    const histMatch = history.find((h) => h.id === live.id);
     if (histMatch) {
       live.slug = histMatch.slug;
       live.summary = histMatch.summary;
@@ -96,30 +105,9 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
   return liveSessions;
 }
 
-export function sessionToDTO(session: Session): SessionDTO {
-  return {
-    id: session.id,
-    status: session.status,
-    createdAt: session.createdAt.toISOString(),
-    permissionMode: session.permissionMode,
-    model: session.model,
-    cwd: session.cwd,
-    numTurns: session.numTurns,
-    totalCostUsd: session.totalCostUsd,
-    lastError: session.lastError,
-    messages: session.messages,
-    slashCommands: session.slashCommands,
-    pendingApproval: session.pendingApproval
-      ? {
-          toolName: session.pendingApproval.toolName,
-          toolUseId: session.pendingApproval.toolUseId,
-          input: session.pendingApproval.input,
-        }
-      : null,
-  };
-}
+// ── Session CRUD ──
 
-export function getSession(id: string): Session | undefined {
+export function getActiveSession(id: string): ActiveSession | undefined {
   return sessions.get(id);
 }
 
@@ -137,71 +125,71 @@ export function getSessionCount(): { active: number; total: number } {
   return { active, total: sessions.size };
 }
 
-export function broadcast(session: Session, msg: ServerMessage): void {
-  const data = JSON.stringify(msg);
-  for (const client of session.clients) {
-    try {
-      if (client.readyState === 1) {
-        client.send(data);
-      }
-    } catch (err) {
-      console.error(`WebSocket send failed for session ${session.id}:`, err);
-      session.clients.delete(client);
-    }
-  }
+/**
+ * Broadcast a ServerMessage to all WebSocket subscribers of a session
+ * via the SessionWatcher. Used for status changes, approval requests,
+ * and other runtime-only events that don't come from the JSONL file.
+ */
+export function broadcastToSession(sessionId: string, msg: ServerMessage): void {
+  if (!watcher) return;
+  watcher.broadcastToSubscribers(sessionId, msg);
 }
 
 export async function createSession(
   req: CreateSessionRequest,
-): Promise<Session> {
+): Promise<{ id: string; status: ActiveSession["status"] }> {
   if (sessions.size >= MAX_SESSIONS) {
     throw new Error(`maximum session limit reached (${MAX_SESSIONS})`);
   }
+
   const hasPrompt = typeof req.prompt === "string" && req.prompt.length > 0;
-  const id = randomUUID();
-  const session: Session = {
-    id,
+
+  // For resumed sessions, use the provided session ID as our key so
+  // the watcher can subscribe using the same ID.
+  // For new sessions, the SDK will create a CLI session ID that we
+  // capture from the result — until then we use a temp UUID.
+  const id = req.resumeSessionId ?? randomUUID();
+
+  const session: ActiveSession = {
+    sessionId: id,
     provider: req.provider ?? "claude",
-    providerSessionId: req.resumeSessionId,
-    status: hasPrompt ? "starting" : "idle",
-    createdAt: new Date(),
-    lastActivityAt: new Date(),
-    permissionMode: req.permissionMode ?? "default",
-    model: req.model,
     cwd: req.cwd ?? (process.env.DEFAULT_CWD ?? process.cwd()),
     abortController: new AbortController(),
-    messages: [],
-    slashCommands: [],
-    totalCostUsd: 0,
-    numTurns: 0,
-    lastError: null,
     pendingApproval: null,
     alwaysAllowedTools: new Set<string>(),
-    clients: new Set<WebSocket>(),
+    status: hasPrompt ? "starting" : "idle",
+    lastError: null,
   };
+
   sessions.set(id, session);
+
   if (hasPrompt) {
-    runSession(session, req.prompt!, req.allowedTools, req.resumeSessionId);
+    runSession(session, req.prompt!, req.permissionMode ?? "default", req.model, req.allowedTools, req.resumeSessionId);
   }
-  return session;
+
+  return { id, status: session.status };
 }
 
+// ── Session execution ──
+
 async function runSession(
-  session: Session,
+  session: ActiveSession,
   prompt: string,
+  permissionMode: PermissionModeCommon,
+  model: string | undefined,
   allowedTools?: string[],
   resumeSessionId?: string,
 ): Promise<void> {
   try {
     session.status = "running";
-    broadcast(session, { type: "status", status: "running" });
+    broadcastToSession(session.sessionId, { type: "status", status: "running" });
 
     const adapter = getProvider(session.provider);
     const generator = adapter.run({
       prompt,
       cwd: session.cwd,
-      permissionMode: session.permissionMode,
-      model: session.model,
+      permissionMode,
+      model,
       allowedTools,
       maxTurns: 50,
       abortSignal: session.abortController.signal,
@@ -218,11 +206,11 @@ async function runSession(
             resolve,
           };
           session.status = "waiting_for_approval";
-          broadcast(session, {
+          broadcastToSession(session.sessionId, {
             type: "status",
             status: "waiting_for_approval",
           });
-          broadcast(session, {
+          broadcastToSession(session.sessionId, {
             type: "tool_approval_request",
             toolName: request.toolName,
             toolUseId: request.toolUseId,
@@ -232,81 +220,85 @@ async function runSession(
       },
       onThinkingDelta: (text: string) => {
         if (session.status === "running") {
-          broadcast(session, { type: "thinking_delta", text });
+          broadcastToSession(session.sessionId, { type: "thinking_delta", text });
         }
       },
     });
 
-    // Manual iteration instead of for-await because we need the generator's
-    // return value (ProviderSessionResult with cost/turns), which for-await discards.
+    // Manual iteration: we need the generator's return value (ProviderSessionResult)
+    // which for-await discards.
     let result: IteratorResult<NormalizedMessage, ProviderSessionResult>;
     while (!(result = await generator.next()).done) {
-      // Intercept system_init messages — store slash commands, broadcast separately
+      // Intercept system_init messages — broadcast slash commands separately.
+      // Messages are NOT stored; the watcher streams them from the JSONL file.
       if (result.value.role === "system" && "event" in result.value && result.value.event.type === "system_init") {
-        session.slashCommands = result.value.event.slashCommands;
-        broadcast(session, { type: "slash_commands", commands: session.slashCommands });
+        broadcastToSession(session.sessionId, { type: "slash_commands", commands: result.value.event.slashCommands });
         continue;
       }
-      session.messages.push(result.value);
-      session.lastActivityAt = new Date();
-      broadcast(session, { type: "message", message: result.value });
+      // All other messages: no-op here. The SessionWatcher tails the JSONL
+      // file and broadcasts { type: "message" } events to subscribers.
     }
 
     const sessionResult = result.value;
-    session.totalCostUsd = sessionResult.totalCostUsd;
-    session.numTurns = sessionResult.numTurns;
-    if (sessionResult.providerSessionId) {
-      session.providerSessionId = sessionResult.providerSessionId;
+
+    // Capture the CLI session ID from the provider result.
+    // If it differs from our temp UUID, remap the session in the map.
+    if (sessionResult.providerSessionId && sessionResult.providerSessionId !== session.sessionId) {
+      const oldId = session.sessionId;
+      session.sessionId = sessionResult.providerSessionId;
+      sessions.delete(oldId);
+      sessions.set(session.sessionId, session);
     }
 
     // Status may have been mutated externally by interruptSession()
-    const currentStatus = session.status as Session["status"];
+    const currentStatus = session.status as ActiveSession["status"];
     if (currentStatus !== "interrupted") {
       session.status = "completed";
     }
   } catch (err) {
-    const currentStatus = session.status as Session["status"];
+    const currentStatus = session.status as ActiveSession["status"];
     const isAbortError = err instanceof Error &&
       (err.name === "AbortError" || err.message === "aborted" || err.message.includes("abort"));
 
     if (currentStatus === "interrupted" && isAbortError) {
       // Expected abort from interruption — not an error
     } else if (currentStatus === "interrupted") {
-      // Interrupted, but the error is NOT an abort error — log it
-      console.error(`Session ${session.id} unexpected error during interruption:`, err);
+      console.error(`Session ${session.sessionId} unexpected error during interruption:`, err);
     } else {
       session.status = "error";
       session.lastError = String(err);
-      console.error(`Session ${session.id} error:`, err);
+      console.error(`Session ${session.sessionId} error:`, err);
     }
   }
-  broadcast(session, {
+
+  broadcastToSession(session.sessionId, {
     type: "status",
     status: session.status,
     ...(session.lastError ? { error: session.lastError } : {}),
   });
 }
 
+// ── Session actions ──
+
 export function interruptSession(id: string): boolean {
   const session = sessions.get(id);
   if (!session) return false;
   session.status = "interrupted";
   session.abortController.abort();
-  broadcast(session, { type: "status", status: "interrupted" });
+  broadcastToSession(session.sessionId, { type: "status", status: "interrupted" });
   return true;
 }
 
 export function deleteSession(id: string): boolean {
   const session = sessions.get(id);
   if (!session) return false;
-  // Interrupt if running, then remove from map
   interruptSession(id);
   sessions.delete(id);
   return true;
 }
 
 export function handleApproval(
-  session: Session,
+  session: ActiveSession,
   toolUseId: string,
   allow: boolean,
   message?: string,
@@ -322,7 +314,7 @@ export function handleApproval(
   const approval = session.pendingApproval;
   session.pendingApproval = null;
   session.status = "running";
-  broadcast(session, { type: "status", status: "running" });
+  broadcastToSession(session.sessionId, { type: "status", status: "running" });
 
   if (allow) {
     if (alwaysAllow) {
@@ -344,7 +336,7 @@ export function handleApproval(
 }
 
 export async function sendFollowUp(
-  session: Session,
+  session: ActiveSession,
   text: string,
 ): Promise<boolean> {
   if (session.status === "running" || session.status === "starting") {
@@ -355,26 +347,12 @@ export async function sendFollowUp(
   runSession(
     session,
     text,
+    "default",
+    undefined,
     undefined,
     isFirstMessage
-      ? (session.providerSessionId ?? undefined)
-      : (session.providerSessionId ?? session.id),
+      ? (session.sessionId ?? undefined)
+      : (session.sessionId),
   );
   return true;
-}
-
-/** Abort all sessions, terminate WS clients, and clear the session map. For tests. */
-export function clearSessions(): void {
-  for (const session of sessions.values()) {
-    session.abortController.abort();
-    for (const client of session.clients) {
-      try {
-        client.terminate();
-      } catch (err) {
-        console.error(`Failed to terminate WS client in session ${session.id}:`, err);
-      }
-    }
-    session.clients.clear();
-  }
-  sessions.clear();
 }
