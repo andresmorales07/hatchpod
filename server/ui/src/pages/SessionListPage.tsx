@@ -29,15 +29,9 @@ export function SessionListPage() {
 
   const groups = useMemo(() => groupByDate(filtered), [filtered]);
 
-  const handleSelect = (id: string, status: string) => {
-    if (status === "history") {
-      useSessionsStore.getState().resumeSession(id).then((newId) => {
-        if (newId) navigate(`/session/${newId}`);
-      }).catch(console.error);
-    } else {
-      setActiveSession(id);
-      navigate(`/session/${id}`);
-    }
+  const handleSelect = (id: string) => {
+    setActiveSession(id);
+    navigate(`/session/${id}`);
   };
 
   return (
@@ -71,7 +65,7 @@ export function SessionListPage() {
                 key={s.id}
                 session={s}
                 isActive={s.id === activeSessionId}
-                onClick={() => handleSelect(s.id, s.status)}
+                onClick={() => handleSelect(s.id)}
               />
             ))}
           </div>
