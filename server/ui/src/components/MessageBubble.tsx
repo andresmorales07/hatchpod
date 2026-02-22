@@ -4,29 +4,8 @@ import { ThinkingBlock } from "./ThinkingBlock";
 import { Markdown } from "./Markdown";
 import { cn } from "@/lib/utils";
 import { getToolSummary } from "@/lib/tools";
+import { cleanMessageText } from "@/lib/message-cleanup";
 import { ChevronDown, Wrench, AlertCircle } from "lucide-react";
-
-/** Clean SDK-internal XML markup that may appear in user messages (defense in depth).
- *  NOTE: Keep in sync with server/src/providers/claude-adapter.ts cleanSdkMarkup(). */
-function cleanSdkMarkup(text: string): string {
-  // Strip <local-command-caveat>...</local-command-caveat> blocks (LLM-only instructions)
-  let cleaned = text.replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "");
-
-  // Unwrap <local-command-stdout>...</local-command-stdout> to plain text
-  cleaned = cleaned.replace(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/g, "$1");
-
-  // Convert <command-name>/<cmd></command-name> ... to clean "/cmd args"
-  const m = cleaned.match(
-    /^\s*<command-name>(\/[^<]+)<\/command-name>\s*<command-message>[\s\S]*?<\/command-message>\s*(?:<command-args>([\s\S]*?)<\/command-args>)?/,
-  );
-  if (m) {
-    const name = m[1].trim();
-    const args = m[2]?.trim();
-    cleaned = args ? `${name} ${args}` : name;
-  }
-
-  return cleaned.trim();
-}
 
 interface Props {
   message: NormalizedMessage;
@@ -118,12 +97,15 @@ function renderPart(
   toolResults: Map<string, ToolResultPart>,
 ) {
   switch (part.type) {
-    case "text":
+    case "text": {
+      const cleaned = cleanMessageText(part.text);
+      if (!cleaned) return null;
       return (
         <div key={i} className="text-sm leading-relaxed">
-          <Markdown>{part.text}</Markdown>
+          <Markdown>{cleaned}</Markdown>
         </div>
       );
+    }
     case "tool_use": {
       const result = toolResults.get(part.toolUseId) ?? null;
       return <ToolCard key={i} toolUse={part} toolResult={result} />;
@@ -153,7 +135,7 @@ export function MessageBubble({ message, thinkingDurationMs, toolResults }: Prop
   }
 
   if (message.role === "user") {
-    const text = cleanSdkMarkup(
+    const text = cleanMessageText(
       message.parts
         .filter((p): p is TextPart => p.type === "text")
         .map((p) => p.text)

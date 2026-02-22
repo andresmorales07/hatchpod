@@ -39,20 +39,35 @@ function normalizeAssistant(msg, index, accumulatedThinking = "") {
     return { role: "assistant", parts, index };
 }
 /**
- * Clean SDK-internal XML markup from user message text.
- * NOTE: Keep in sync with server/ui/src/components/MessageBubble.tsx cleanSdkMarkup().
- * Handles:
- *  - <command-name>/<cmd></command-name> ... → "/cmd args"
- *  - <local-command-caveat>...</local-command-caveat> → stripped entirely
- *  - <local-command-stdout>...</local-command-stdout> → unwrapped to plain text
+ * Strip system/protocol XML tags from message text.
+ * NOTE: Keep in sync with server/ui/src/lib/message-cleanup.ts
+ *
+ * Tags whose content is removed entirely. Add new entries as Claude Code
+ * introduces new protocol tags.
  */
-function cleanSdkMarkup(text) {
-    // Strip <local-command-caveat>...</local-command-caveat> blocks (LLM-only instructions)
-    let cleaned = text.replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "");
-    // Unwrap <local-command-stdout>...</local-command-stdout> to plain text
+const SYSTEM_TAGS = [
+    "system-reminder",
+    "assistant_context",
+    "task-notification",
+    "user-prompt-submit-hook",
+    "EXTREMELY_IMPORTANT",
+    "EXTREMELY-IMPORTANT",
+    "local-command-caveat",
+    "command-message",
+    "fast_mode_info",
+];
+const STRIP_RE = new RegExp(SYSTEM_TAGS.map((t) => `<${t}>[\\s\\S]*?</${t}>`).join("|"), "g");
+/**
+ * Full message cleanup: strip system tags, unwrap stdout, convert slash-command markup.
+ * NOTE: Keep in sync with server/ui/src/lib/message-cleanup.ts cleanMessageText().
+ */
+function cleanMessageText(text) {
+    // 1. Strip all known system/protocol XML blocks
+    let cleaned = text.replace(STRIP_RE, "");
+    // 2. Unwrap <local-command-stdout>...</local-command-stdout> to plain text
     cleaned = cleaned.replace(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/g, "$1");
-    // Convert <command-name>/<cmd></command-name> ... to clean "/cmd args"
-    const m = cleaned.match(/^\s*<command-name>(\/[^<]+)<\/command-name>\s*<command-message>[\s\S]*?<\/command-message>\s*(?:<command-args>([\s\S]*?)<\/command-args>)?/);
+    // 3. Convert <command-name>/<cmd></command-name> ... to clean "/cmd args"
+    const m = cleaned.match(/^\s*<command-name>(\/[^<]+)<\/command-name>\s*(?:<command-args>([\s\S]*?)<\/command-args>)?/);
     if (m) {
         const name = m[1].trim();
         const args = m[2]?.trim();
@@ -67,12 +82,12 @@ function normalizeUser(msg, index) {
     const parts = [];
     if (typeof inner.content === "string") {
         if (inner.content)
-            parts.push({ type: "text", text: cleanSdkMarkup(inner.content) });
+            parts.push({ type: "text", text: cleanMessageText(inner.content) });
     }
     else if (Array.isArray(inner.content)) {
         for (const block of inner.content) {
             if (block.type === "text" && block.text) {
-                parts.push({ type: "text", text: cleanSdkMarkup(block.text) });
+                parts.push({ type: "text", text: cleanMessageText(block.text) });
             }
             else if (block.type === "tool_result") {
                 const resultBlock = block;
