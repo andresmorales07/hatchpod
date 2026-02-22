@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { NormalizedMessage, MessagePart, TextPart } from "../types";
+import type { NormalizedMessage, MessagePart, TextPart, ToolResultPart } from "../types";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { Markdown } from "./Markdown";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ function cleanSdkMarkup(text: string): string {
 interface Props {
   message: NormalizedMessage;
   thinkingDurationMs: number | null;
+  toolResults: Map<string, ToolResultPart>;
 }
 
 function ToolCard({ part }: { part: { type: "tool_use"; toolName: string; input: unknown } | { type: "tool_result"; output: string } }) {
@@ -58,7 +59,13 @@ function ToolCard({ part }: { part: { type: "tool_use"; toolName: string; input:
   );
 }
 
-function renderPart(part: MessagePart, i: number, thinkingDurationMs: number | null) {
+function renderPart(
+  part: MessagePart,
+  i: number,
+  thinkingDurationMs: number | null,
+  toolResults: Map<string, ToolResultPart>,
+  allParts: MessagePart[],
+) {
   switch (part.type) {
     case "text":
       return (
@@ -84,7 +91,7 @@ function renderPart(part: MessagePart, i: number, thinkingDurationMs: number | n
   }
 }
 
-export function MessageBubble({ message, thinkingDurationMs }: Props) {
+export function MessageBubble({ message, thinkingDurationMs, toolResults }: Props) {
   if (message.role === "user") {
     const text = cleanSdkMarkup(
       message.parts
@@ -116,7 +123,7 @@ export function MessageBubble({ message, thinkingDurationMs }: Props) {
   if (message.role === "assistant") {
     return (
       <div className="flex flex-col gap-2 max-w-[85%] md:max-w-[70%]">
-        {message.parts.map((part, i) => renderPart(part, i, thinkingDurationMs))}
+        {message.parts.map((part, i) => renderPart(part, i, thinkingDurationMs, toolResults, message.parts))}
       </div>
     );
   }

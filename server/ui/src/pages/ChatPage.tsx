@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMessagesStore } from "@/stores/messages";
 import { useSessionsStore } from "@/stores/sessions";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowDown, ArrowLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { ToolResultPart } from "@/types";
 
 const statusStyles: Record<string, string> = {
   idle: "bg-emerald-500/15 text-emerald-400 border-transparent",
@@ -49,6 +50,20 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fetchedSessionsRef = useRef(false);
+
+  const toolResults = useMemo(() => {
+    const map = new Map<string, ToolResultPart>();
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        for (const part of msg.parts) {
+          if (part.type === "tool_result") {
+            map.set(part.toolUseId, part);
+          }
+        }
+      }
+    }
+    return map;
+  }, [messages]);
 
   useEffect(() => {
     fetchedSessionsRef.current = false;
@@ -115,7 +130,7 @@ export function ChatPage() {
         <div ref={scrollContainerRef} onScroll={handleScroll} className="h-full overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 py-4 flex flex-col gap-4">
             {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} thinkingDurationMs={thinkingDurations[i] ?? null} />
+              <MessageBubble key={i} message={msg} thinkingDurationMs={thinkingDurations[i] ?? null} toolResults={toolResults} />
             ))}
             {isThinkingActive && <ThinkingIndicator thinkingText={thinkingText} startTime={thinkingStartTime!} />}
             <div ref={messagesEndRef} />
