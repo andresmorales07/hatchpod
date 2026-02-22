@@ -32,8 +32,16 @@ export function ChatPage() {
     messages, slashCommands, status, connected, pendingApproval, lastError,
     thinkingText, thinkingStartTime, thinkingDurations,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
+    loadHistory,
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
+  const activeSessionId = useSessionsStore((s) => s.activeSessionId);
+
+  useEffect(() => {
+    if (activeSessionId && activeSessionId !== id) {
+      navigate(`/session/${activeSessionId}`, { replace: true });
+    }
+  }, [activeSessionId, id, navigate]);
 
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
@@ -41,12 +49,19 @@ export function ChatPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (id) {
-      useSessionsStore.getState().setActiveSession(id);
+    if (!id) return;
+    useSessionsStore.getState().setActiveSession(id);
+
+    const sessions = useSessionsStore.getState().sessions;
+    const session = sessions.find((s) => s.id === id);
+
+    if (session?.status === "history") {
+      loadHistory(id, session.cwd);
+    } else {
       connect(id);
     }
     return () => disconnect();
-  }, [id, connect, disconnect]);
+  }, [id, connect, disconnect, loadHistory]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,7 +95,7 @@ export function ChatPage() {
         <Badge variant="outline" className={cn("text-xs font-semibold uppercase tracking-wide", statusStyles[status])}>
           {status}
         </Badge>
-        {!connected && (
+        {!connected && status !== "history" && (
           <Badge variant="outline" className={cn("text-xs font-semibold uppercase tracking-wide", statusStyles.disconnected)}>
             offline
           </Badge>
