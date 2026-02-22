@@ -121,4 +121,12 @@ export interface ProviderAdapter {
     options: ProviderSessionOptions,
   ): AsyncGenerator<NormalizedMessage, ProviderSessionResult, undefined>;
   getSessionHistory?(sessionId: string): Promise<NormalizedMessage[]>;
+
+  // Resolve a session ID to its JSONL file path on disk
+  getSessionFilePath(sessionId: string): Promise<string | null>;
+
+  // Parse a single raw JSONL line into a normalized message.
+  // Returns null for lines that don't produce a visible message.
+  // `index` is the caller-maintained message counter.
+  normalizeFileLine(line: string, index: number): NormalizedMessage | null;
 }

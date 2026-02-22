@@ -298,4 +298,12 @@ export class TestAdapter implements ProviderAdapter {
       numTurns: Math.max(1, index),
     };
   }
+
+  async getSessionFilePath(_sessionId: string): Promise<string | null> {
+    return null; // Test adapter doesn't write to disk
+  }
+
+  normalizeFileLine(_line: string, _index: number): NormalizedMessage | null {
+    return null; // Test adapter doesn't use file-based messages
+  }
 }
