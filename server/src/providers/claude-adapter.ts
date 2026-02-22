@@ -329,6 +329,8 @@ export class ClaudeAdapter implements ProviderAdapter {
     const messages: NormalizedMessage[] = [];
     let messageIndex = 0;
     let skippedLines = 0;
+    // Track the previous line's timestamp to compute thinking duration
+    let prevTimestampMs: number | null = null;
 
     try {
       for await (const line of rl) {
@@ -343,7 +345,13 @@ export class ClaudeAdapter implements ProviderAdapter {
         }
 
         const type = parsed.type;
-        if (type !== "user" && type !== "assistant") continue;
+        const lineTs = typeof parsed.timestamp === "string" ? Date.parse(parsed.timestamp) : NaN;
+
+        // Skip non-message lines but still track their timestamps
+        if (type !== "user" && type !== "assistant") {
+          if (!Number.isNaN(lineTs)) prevTimestampMs = lineTs;
+          continue;
+        }
 
         const msg = parsed.message as Record<string, unknown> | undefined;
         if (!msg) continue;
@@ -354,6 +362,16 @@ export class ClaudeAdapter implements ProviderAdapter {
             { type: "assistant", message: msg } as unknown as SDKAssistantMessage,
             messageIndex,
           );
+          // Compute thinking duration from JSONL timestamps
+          if (
+            normalized?.role === "assistant" &&
+            normalized.parts.some((p) => p.type === "reasoning") &&
+            prevTimestampMs != null &&
+            !Number.isNaN(lineTs) &&
+            lineTs > prevTimestampMs
+          ) {
+            normalized.thinkingDurationMs = lineTs - prevTimestampMs;
+          }
         } else if (type === "user") {
           normalized = normalizeUser(
             { type: "user", message: msg } as unknown as SDKUserMessage,
@@ -365,6 +383,9 @@ export class ClaudeAdapter implements ProviderAdapter {
           messages.push(normalized);
           messageIndex++;
         }
+
+        // Update prevTimestampMs for the next iteration
+        if (!Number.isNaN(lineTs)) prevTimestampMs = lineTs;
       }
     } finally {
       if (skippedLines > 0) {

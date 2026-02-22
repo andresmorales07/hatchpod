@@ -54,7 +54,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   }
 
   return (
-    <div className="flex flex-col h-full w-[280px] border-r border-border bg-card shrink-0 transition-all duration-200">
+    <div className="flex flex-col h-full w-[280px] border-r border-border bg-card shrink-0 overflow-hidden transition-all duration-200">
       <div className="flex items-center gap-1 px-2 pt-2 pb-0">
         <Button variant="ghost" size="icon-sm" onClick={onToggleCollapse} className="shrink-0" title="Collapse sidebar">
           <PanelLeftClose className="size-4" />

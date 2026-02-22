@@ -106,7 +106,7 @@ export function ChatPage() {
   const visibleError = lastError && lastError !== dismissedError ? lastError : null;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {!isDesktop && (
@@ -130,7 +130,7 @@ export function ChatPage() {
         <div ref={scrollContainerRef} onScroll={handleScroll} className="h-full overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 py-4 flex flex-col gap-4">
             {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} thinkingDurationMs={thinkingDurations[i] ?? null} toolResults={toolResults} />
+              <MessageBubble key={i} message={msg} thinkingDurationMs={thinkingDurations[i] ?? (msg.role === "assistant" ? msg.thinkingDurationMs : null) ?? null} toolResults={toolResults} />
             ))}
             {isThinkingActive && <ThinkingIndicator thinkingText={thinkingText} startTime={thinkingStartTime!} />}
             <div ref={messagesEndRef} />

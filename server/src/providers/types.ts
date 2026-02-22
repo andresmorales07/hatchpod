@@ -57,6 +57,7 @@ export interface AssistantMessage {
   role: "assistant";
   parts: MessagePart[];
   index: number;
+  thinkingDurationMs?: number;
 }
 
 export interface SystemEvent {

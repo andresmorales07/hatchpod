@@ -8,7 +8,7 @@ export type MessagePart = TextPart | ToolUsePart | ToolResultPart | ReasoningPar
 
 // Messages
 export interface UserMessage { role: "user"; parts: MessagePart[]; index: number; }
-export interface AssistantMessage { role: "assistant"; parts: MessagePart[]; index: number; }
+export interface AssistantMessage { role: "assistant"; parts: MessagePart[]; index: number; thinkingDurationMs?: number; }
 export interface SystemEvent {
   role: "system";
   event:

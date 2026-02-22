@@ -259,6 +259,8 @@ export class ClaudeAdapter {
         const messages = [];
         let messageIndex = 0;
         let skippedLines = 0;
+        // Track the previous line's timestamp to compute thinking duration
+        let prevTimestampMs = null;
         try {
             for await (const line of rl) {
                 if (!line.trim())
@@ -272,14 +274,27 @@ export class ClaudeAdapter {
                     continue;
                 }
                 const type = parsed.type;
-                if (type !== "user" && type !== "assistant")
+                const lineTs = typeof parsed.timestamp === "string" ? Date.parse(parsed.timestamp) : NaN;
+                // Skip non-message lines but still track their timestamps
+                if (type !== "user" && type !== "assistant") {
+                    if (!Number.isNaN(lineTs))
+                        prevTimestampMs = lineTs;
                     continue;
+                }
                 const msg = parsed.message;
                 if (!msg)
                     continue;
                 let normalized = null;
                 if (type === "assistant") {
                     normalized = normalizeAssistant({ type: "assistant", message: msg }, messageIndex);
+                    // Compute thinking duration from JSONL timestamps
+                    if (normalized?.role === "assistant" &&
+                        normalized.parts.some((p) => p.type === "reasoning") &&
+                        prevTimestampMs != null &&
+                        !Number.isNaN(lineTs) &&
+                        lineTs > prevTimestampMs) {
+                        normalized.thinkingDurationMs = lineTs - prevTimestampMs;
+                    }
                 }
                 else if (type === "user") {
                     normalized = normalizeUser({ type: "user", message: msg }, messageIndex);
@@ -288,6 +303,9 @@ export class ClaudeAdapter {
                     messages.push(normalized);
                     messageIndex++;
                 }
+                // Update prevTimestampMs for the next iteration
+                if (!Number.isNaN(lineTs))
+                    prevTimestampMs = lineTs;
             }
         }
         finally {
