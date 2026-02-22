@@ -12,7 +12,6 @@ export interface AssistantMessage { role: "assistant"; parts: MessagePart[]; ind
 export interface SystemEvent {
   role: "system";
   event:
-    | { type: "session_result"; totalCostUsd: number; numTurns: number }
     | { type: "status"; status: string }
     | { type: "system_init"; slashCommands: SlashCommand[] };
   index: number;
