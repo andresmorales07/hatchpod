@@ -87,24 +87,23 @@ async function parseSessionMetadata(filePath, sessionId, mtimeMs) {
         createdAt: firstTimestamp ? new Date(firstTimestamp) : new Date(mtimeMs),
     };
 }
-/** List historical Claude Code sessions for a given CWD. */
-export async function listSessionHistory(cwd) {
-    const projectDir = cwdToProjectDir(cwd);
+/** Internal: scan a single project directory for JSONL session files. */
+async function listSessionHistoryInDir(dirPath) {
     let entries;
     try {
-        entries = await readdir(projectDir);
+        entries = await readdir(dirPath);
     }
     catch (err) {
         const code = err?.code;
         if (code !== "ENOENT") {
-            console.warn(`Failed to read project directory ${projectDir}:`, err);
+            console.warn(`Failed to read project directory ${dirPath}:`, err);
         }
         return [];
     }
     const jsonlFiles = entries.filter((name) => name.endsWith(".jsonl") && UUID_RE.test(name.replace(".jsonl", "")));
     const results = [];
     for (const fileName of jsonlFiles) {
-        const filePath = join(projectDir, fileName);
+        const filePath = join(dirPath, fileName);
         const sessionId = fileName.replace(".jsonl", "");
         let fileStat;
         try {
@@ -134,4 +133,23 @@ export async function listSessionHistory(cwd) {
         }
     }
     return results;
+}
+/** List historical Claude Code sessions for a given CWD. */
+export async function listSessionHistory(cwd) {
+    return listSessionHistoryInDir(cwdToProjectDir(cwd));
+}
+/** List all historical sessions across every Claude Code project directory. */
+export async function listAllSessionHistory() {
+    const base = process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), ".claude", "projects");
+    let entries;
+    try {
+        entries = await readdir(base, { withFileTypes: true });
+    }
+    catch {
+        return [];
+    }
+    const results = await Promise.all(entries
+        .filter((e) => e.isDirectory())
+        .map((e) => listSessionHistoryInDir(join(base, e.name))));
+    return results.flat();
 }

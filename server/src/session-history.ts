@@ -1,4 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createReadStream } from "node:fs";
@@ -117,17 +118,15 @@ async function parseSessionMetadata(
   };
 }
 
-/** List historical Claude Code sessions for a given CWD. */
-export async function listSessionHistory(cwd: string): Promise<HistorySession[]> {
-  const projectDir = cwdToProjectDir(cwd);
-
+/** Internal: scan a single project directory for JSONL session files. */
+async function listSessionHistoryInDir(dirPath: string): Promise<HistorySession[]> {
   let entries: string[];
   try {
-    entries = await readdir(projectDir);
+    entries = await readdir(dirPath);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code !== "ENOENT") {
-      console.warn(`Failed to read project directory ${projectDir}:`, err);
+      console.warn(`Failed to read project directory ${dirPath}:`, err);
     }
     return [];
   }
@@ -139,7 +138,7 @@ export async function listSessionHistory(cwd: string): Promise<HistorySession[]>
   const results: HistorySession[] = [];
 
   for (const fileName of jsonlFiles) {
-    const filePath = join(projectDir, fileName);
+    const filePath = join(dirPath, fileName);
     const sessionId = fileName.replace(".jsonl", "");
 
     let fileStat;
@@ -171,4 +170,26 @@ export async function listSessionHistory(cwd: string): Promise<HistorySession[]>
   }
 
   return results;
+}
+
+/** List historical Claude Code sessions for a given CWD. */
+export async function listSessionHistory(cwd: string): Promise<HistorySession[]> {
+  return listSessionHistoryInDir(cwdToProjectDir(cwd));
+}
+
+/** List all historical sessions across every Claude Code project directory. */
+export async function listAllSessionHistory(): Promise<HistorySession[]> {
+  const base = process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), ".claude", "projects");
+  let entries: Dirent[];
+  try {
+    entries = await readdir(base, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const results = await Promise.all(
+    entries
+      .filter((e) => e.isDirectory())
+      .map((e) => listSessionHistoryInDir(join(base, e.name))),
+  );
+  return results.flat();
 }

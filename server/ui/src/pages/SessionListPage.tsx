@@ -3,12 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { useSessionsStore } from "@/stores/sessions";
 import { groupByDate } from "@/lib/sessions";
 import { SessionCard } from "@/components/SessionCard";
+import { FolderPicker } from "@/components/FolderPicker";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 
 export function SessionListPage() {
-  const { sessions, activeSessionId, searchQuery, setActiveSession, setSearchQuery, fetchSessions } = useSessionsStore();
+  const { sessions, activeSessionId, searchQuery, setActiveSession, setSearchQuery, fetchSessions, cwd, browseRoot, setCwd, workspaceFilter, setWorkspaceFilter } = useSessionsStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -47,6 +48,24 @@ export function SessionListPage() {
           <Plus className="size-5" />
         </Button>
       </header>
+      <div className="flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <FolderPicker
+            cwd={workspaceFilter ?? cwd}
+            browseRoot={browseRoot}
+            onCwdChange={(path) => { setWorkspaceFilter(path); setCwd(path); }}
+          />
+        </div>
+        {workspaceFilter && (
+          <button
+            onClick={() => setWorkspaceFilter(null)}
+            title="Show all workspaces"
+            className="shrink-0 mr-3 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
       <div className="px-4 py-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

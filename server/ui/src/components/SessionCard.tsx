@@ -35,8 +35,8 @@ function relativeTime(isoDate: string): string {
 }
 
 function sessionDisplayName(s: SessionSummary): string {
-  if (s.slug) return s.slug;
   if (s.summary) return s.summary;
+  if (s.slug) return s.slug;
   return s.id.slice(0, 8);
 }
 
@@ -85,6 +85,11 @@ export function SessionCard({ session, isActive, onClick }: Props) {
           {relativeTime(session.lastModified || session.createdAt)}
           {session.numTurns > 0 && ` · ${session.numTurns} turns`}
         </div>
+        {session.cwd && (
+          <p className="text-xs text-zinc-500 truncate mt-0.5">
+            {session.cwd.replace(/^\/(?:home|Users)\/[^/]+/, "~")}
+          </p>
+        )}
       </div>
       {session.hasPendingApproval && (
         <Badge variant="destructive" className="text-[0.625rem] px-1.5 py-0 shrink-0">!</Badge>

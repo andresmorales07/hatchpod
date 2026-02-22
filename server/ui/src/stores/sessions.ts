@@ -12,6 +12,7 @@ export interface SessionSummary {
   provider: string;
   slug: string | null;
   summary: string | null;
+  cwd: string;
 }
 
 interface SessionsState {
@@ -21,12 +22,14 @@ interface SessionsState {
   browseRoot: string;
   searchQuery: string;
   lastError: string | null;
+  workspaceFilter: string | null;
 
   setActiveSession: (id: string | null) => void;
   setCwd: (cwd: string) => void;
   setBrowseRoot: (root: string) => void;
   setSearchQuery: (query: string) => void;
   setLastError: (error: string | null) => void;
+  setWorkspaceFilter: (filter: string | null) => void;
   fetchConfig: () => Promise<void>;
   fetchSessions: () => Promise<void>;
   createSession: (opts: { prompt?: string; cwd: string }) => Promise<string | null>;
@@ -41,12 +44,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   browseRoot: "",
   searchQuery: "",
   lastError: null,
+  workspaceFilter: null,
 
   setActiveSession: (id) => set({ activeSessionId: id }),
   setCwd: (cwd) => set({ cwd }),
   setBrowseRoot: (root) => set({ browseRoot: root }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setLastError: (error) => set({ lastError: error }),
+  setWorkspaceFilter: (filter) => set({ workspaceFilter: filter }),
 
   fetchConfig: async () => {
     const { token } = useAuthStore.getState();
@@ -66,9 +71,9 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 
   fetchSessions: async () => {
     const { token } = useAuthStore.getState();
-    const { cwd } = get();
+    const { workspaceFilter } = get();
     try {
-      const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+      const params = workspaceFilter ? `?cwd=${encodeURIComponent(workspaceFilter)}` : "";
       const res = await fetch(`/api/sessions${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.status === 401) { useAuthStore.getState().logout(); return; }
       if (res.ok) set({ sessions: await res.json() });

@@ -29,23 +29,19 @@ export function listSessions() {
             provider: s.provider,
             slug: null,
             summary: null,
+            cwd: s.cwd,
         };
     });
 }
 export async function listSessionsWithHistory(cwd) {
     const liveSessions = listSessions();
-    if (!cwd)
-        return liveSessions;
-    const { listSessionHistory } = await import("./session-history.js");
+    const { listSessionHistory, listAllSessionHistory } = await import("./session-history.js");
     let history;
     try {
-        history = await listSessionHistory(cwd);
+        history = await (cwd ? listSessionHistory(cwd) : listAllSessionHistory());
     }
     catch (err) {
-        const code = err?.code;
-        if (code !== "ENOENT") {
-            console.warn("Failed to list session history:", err);
-        }
+        console.warn("Failed to list session history:", err);
         return liveSessions;
     }
     // Build set of provider session IDs that are already live
@@ -54,7 +50,7 @@ export async function listSessionsWithHistory(cwd) {
         if (s.providerSessionId)
             liveProviderIds.add(s.providerSessionId);
     }
-    // Enrich live sessions with slug/summary from history
+    // Enrich live sessions with slug/summary/cwd from history
     for (const live of liveSessions) {
         const session = sessions.get(live.id);
         if (!session?.providerSessionId)
@@ -64,6 +60,7 @@ export async function listSessionsWithHistory(cwd) {
             live.slug = histMatch.slug;
             live.summary = histMatch.summary;
             live.lastModified = histMatch.lastModified.toISOString();
+            live.cwd = histMatch.cwd;
         }
     }
     // Add history-only sessions (not already live)
@@ -81,6 +78,7 @@ export async function listSessionsWithHistory(cwd) {
             provider: "claude",
             slug: h.slug,
             summary: h.summary,
+            cwd: h.cwd,
         });
     }
     // Sort by lastModified descending

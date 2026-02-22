@@ -52,6 +52,7 @@ export interface SessionSummaryDTO {
     provider: string;
     slug: string | null;
     summary: string | null;
+    cwd: string;
 }
 export interface PendingApproval {
     toolName: string;

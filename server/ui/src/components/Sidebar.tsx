@@ -7,7 +7,7 @@ import { FolderPicker } from "./FolderPicker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Plus, Search, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -15,7 +15,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
-  const { sessions, activeSessionId, searchQuery, setActiveSession, setSearchQuery, fetchSessions, cwd, browseRoot, setCwd } = useSessionsStore();
+  const { sessions, activeSessionId, searchQuery, setActiveSession, setSearchQuery, fetchSessions, cwd, browseRoot, setCwd, workspaceFilter, setWorkspaceFilter } = useSessionsStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,7 +66,24 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           <PanelLeftClose className="size-4" />
         </Button>
       </div>
-      <FolderPicker cwd={cwd} browseRoot={browseRoot} onCwdChange={setCwd} />
+      <div className="flex items-center gap-1">
+        <div className="flex-1 min-w-0">
+          <FolderPicker
+            cwd={workspaceFilter ?? cwd}
+            browseRoot={browseRoot}
+            onCwdChange={(path) => { setWorkspaceFilter(path); setCwd(path); }}
+          />
+        </div>
+        {workspaceFilter && (
+          <button
+            onClick={() => setWorkspaceFilter(null)}
+            title="Show all workspaces"
+            className="shrink-0 mr-2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
       <div className="px-3 py-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />

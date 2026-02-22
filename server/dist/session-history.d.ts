@@ -12,3 +12,5 @@ export declare function cwdToProjectDir(cwd: string): string;
 export declare function clearHistoryCache(): void;
 /** List historical Claude Code sessions for a given CWD. */
 export declare function listSessionHistory(cwd: string): Promise<HistorySession[]>;
+/** List all historical sessions across every Claude Code project directory. */
+export declare function listAllSessionHistory(): Promise<HistorySession[]>;

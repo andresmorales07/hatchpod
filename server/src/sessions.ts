@@ -36,6 +36,7 @@ export function listSessions(): SessionSummaryDTO[] {
       provider: s.provider,
       slug: null,
       summary: null,
+      cwd: s.cwd,
     };
   });
 }
@@ -43,17 +44,12 @@ export function listSessions(): SessionSummaryDTO[] {
 export async function listSessionsWithHistory(cwd?: string): Promise<SessionSummaryDTO[]> {
   const liveSessions = listSessions();
 
-  if (!cwd) return liveSessions;
-
-  const { listSessionHistory } = await import("./session-history.js");
-  let history: Awaited<ReturnType<typeof listSessionHistory>>;
+  const { listSessionHistory, listAllSessionHistory } = await import("./session-history.js");
+  let history: Awaited<ReturnType<typeof listAllSessionHistory>>;
   try {
-    history = await listSessionHistory(cwd);
+    history = await (cwd ? listSessionHistory(cwd) : listAllSessionHistory());
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code !== "ENOENT") {
-      console.warn("Failed to list session history:", err);
-    }
+    console.warn("Failed to list session history:", err);
     return liveSessions;
   }
 
@@ -63,7 +59,7 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
     if (s.providerSessionId) liveProviderIds.add(s.providerSessionId);
   }
 
-  // Enrich live sessions with slug/summary from history
+  // Enrich live sessions with slug/summary/cwd from history
   for (const live of liveSessions) {
     const session = sessions.get(live.id);
     if (!session?.providerSessionId) continue;
@@ -72,6 +68,7 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
       live.slug = histMatch.slug;
       live.summary = histMatch.summary;
       live.lastModified = histMatch.lastModified.toISOString();
+      live.cwd = histMatch.cwd;
     }
   }
 
@@ -89,6 +86,7 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
       provider: "claude",
       slug: h.slug,
       summary: h.summary,
+      cwd: h.cwd,
     });
   }
 
