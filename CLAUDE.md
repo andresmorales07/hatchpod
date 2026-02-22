@@ -65,13 +65,15 @@ Two Docker volumes persist state across container restarts:
 │   ├── src/                # Server source (TypeScript)
 │   │   ├── index.ts        # Entry point: HTTP + WS server
 │   │   ├── auth.ts         # Bearer token auth, rate limiting (API_PASSWORD, TRUST_PROXY)
+│   │   ├── session-history.ts # CLI session history reader
 │   │   ├── sessions.ts     # Session manager (provider-agnostic)
-│   │   ├── routes.ts       # REST route handlers (sessions, browse)
+│   │   ├── routes.ts       # REST route handlers (sessions, browse, history)
 │   │   ├── ws.ts           # WebSocket handler
 │   │   ├── types.ts        # Shared TypeScript interfaces
 │   │   └── providers/      # Provider abstraction layer
 │   │       ├── types.ts    # NormalizedMessage, ProviderAdapter interface
 │   │       ├── claude-adapter.ts  # Claude SDK adapter (sole SDK import)
+│   │       ├── test-adapter.ts    # Test/mock adapter for development
 │   │       └── index.ts    # Provider registry
 │   └── ui/                 # React web UI (Vite + Tailwind CSS v4 + shadcn/ui)
 │       ├── package.json    # UI dependencies
@@ -79,23 +81,37 @@ Two Docker volumes persist state across container restarts:
 │       ├── vite.config.ts  # Vite config (builds to ../public/, @/ path alias)
 │       └── src/
 │           ├── main.tsx            # React entry point
-│           ├── App.tsx             # App shell, login, sidebar layout
+│           ├── App.tsx             # Router and auth gate
 │           ├── globals.css         # Tailwind imports + shadcn theme tokens (dark theme)
 │           ├── types.ts            # UI-side normalized message types
 │           ├── lib/
-│           │   └── utils.ts        # cn() class merge utility (tailwind-merge + clsx)
+│           │   ├── utils.ts        # cn() class merge utility (tailwind-merge + clsx)
+│           │   └── sessions.ts     # Session API helpers
 │           ├── hooks/
-│           │   └── useSession.ts   # WebSocket session hook
+│           │   ├── useMediaQuery.ts # Responsive breakpoint hook
+│           │   └── useSwipe.ts     # Touch swipe gesture hook
+│           ├── pages/              # Page-level components
+│           │   ├── ChatPage.tsx         # Active chat session view
+│           │   ├── LoginPage.tsx        # Authentication page
+│           │   ├── NewSessionPage.tsx   # New session creation
+│           │   └── SessionListPage.tsx  # Session list/history view
+│           ├── stores/             # State management
+│           │   ├── auth.ts         # Auth state
+│           │   ├── messages.ts     # Message/WebSocket state
+│           │   └── sessions.ts     # Session list state
 │           └── components/
-│               ├── SessionList.tsx          # Session list + new session form
-│               ├── ChatView.tsx             # Chat message view with auto-scroll
-│               ├── MessageBubble.tsx         # Message rendering
+│               ├── AppShell.tsx             # Layout shell (sidebar + content)
+│               ├── Composer.tsx             # Message input composer
+│               ├── MessageBubble.tsx        # Message rendering
 │               ├── Markdown.tsx             # Markdown rendering (react-markdown + PrismLight)
-│               ├── ToolApproval.tsx          # Tool approval UI
-│               ├── FolderPicker.tsx          # Breadcrumb folder picker
-│               ├── SlashCommandDropdown.tsx  # Slash command autocomplete
-│               ├── ThinkingBlock.tsx         # Expandable thinking/reasoning display
-│               ├── ThinkingIndicator.tsx     # Animated thinking spinner
+│               ├── ToolApproval.tsx         # Tool approval UI
+│               ├── FolderPicker.tsx         # Breadcrumb folder picker
+│               ├── SessionCard.tsx          # Session list item card
+│               ├── Sidebar.tsx              # Navigation sidebar
+│               ├── SlashCommandDropdown.tsx # Slash command autocomplete
+│               ├── ThinkingBlock.tsx        # Expandable thinking/reasoning display
+│               ├── ThinkingIndicator.tsx    # Animated thinking spinner
+│               ├── WorkspaceFilter.tsx      # Workspace filter dropdown
 │               └── ui/                      # shadcn/ui primitives
 │                   ├── badge.tsx
 │                   ├── button.tsx
@@ -276,4 +292,4 @@ Specialized review agents in `.claude/agents/`:
 
 Configured in `.claude/settings.json`:
 
-- **TypeScript type-check** (PostToolUse) — Runs `tsc --noEmit` after any Edit/Write to files under `server/src/` or `server/ui/src/`. Catches type errors immediately after edits.
+- **TypeScript type-check** (PostToolUse) — Runs `tsc --noEmit` after any Edit/Write to files under `server/src/` or `server/ui/src/`. Catches type errors immediately after edits. Note: the hook paths in `.claude/settings.json` are hardcoded to the container path (`/home/hatchpod/workspace/repos/hatchpod/`); adjust when running Claude Code outside the container.
