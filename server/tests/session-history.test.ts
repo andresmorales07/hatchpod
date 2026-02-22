@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 let listSessionHistory: typeof import("../src/session-history.js").listSessionHistory;
 let cwdToProjectDir: typeof import("../src/session-history.js").cwdToProjectDir;
 let clearHistoryCache: typeof import("../src/session-history.js").clearHistoryCache;
+let findSessionFile: typeof import("../src/session-history.js").findSessionFile;
 
 const testDir = join(tmpdir(), `hatchpod-history-test-${Date.now()}`);
 const fakeClaudeDir = join(testDir, ".claude", "projects");
@@ -23,6 +24,7 @@ beforeAll(async () => {
   listSessionHistory = mod.listSessionHistory;
   cwdToProjectDir = mod.cwdToProjectDir;
   clearHistoryCache = mod.clearHistoryCache;
+  findSessionFile = mod.findSessionFile;
 
   await mkdir(fakeProjectDir, { recursive: true });
 });
@@ -144,6 +146,22 @@ describe("session-history", () => {
       const result = await listSessionHistory(fakeCwd);
       // No entry for the txt file or subdir
       expect(result.every((s) => s.id !== "not-a-session")).toBe(true);
+    });
+  });
+
+  describe("findSessionFile", () => {
+    it("finds a session file by ID across project directories", async () => {
+      const sid = randomUUID();
+      const content = makeJsonl(sid, { slug: "findable-session" });
+      await writeFile(join(fakeProjectDir, `${sid}.jsonl`), content);
+
+      const result = await findSessionFile(sid);
+      expect(result).toBe(join(fakeProjectDir, `${sid}.jsonl`));
+    });
+
+    it("returns null for nonexistent session ID", async () => {
+      const result = await findSessionFile(randomUUID());
+      expect(result).toBeNull();
     });
   });
 });

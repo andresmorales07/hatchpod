@@ -12,5 +12,7 @@ export declare function cwdToProjectDir(cwd: string): string;
 export declare function clearHistoryCache(): void;
 /** List historical Claude Code sessions for a given CWD. */
 export declare function listSessionHistory(cwd: string): Promise<HistorySession[]>;
+/** Find the JSONL file path for a given session ID across all project directories. */
+export declare function findSessionFile(sessionId: string): Promise<string | null>;
 /** List all historical sessions across every Claude Code project directory. */
 export declare function listAllSessionHistory(): Promise<HistorySession[]>;

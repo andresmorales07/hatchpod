@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useAuthStore } from "./auth";
+import { useSessionsStore } from "./sessions";
 import type { NormalizedMessage, SlashCommand } from "../types";
 
 type ServerMessage =
@@ -28,6 +29,8 @@ interface MessagesState {
   thinkingStartTime: number | null;
   thinkingDurations: Record<number, number>;
   lastError: string | null;
+  historySessionId: string | null;
+  historySessionCwd: string | null;
 
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -36,6 +39,7 @@ interface MessagesState {
   approveAlways: (toolUseId: string) => void;
   deny: (toolUseId: string, message?: string) => void;
   interrupt: () => void;
+  loadHistory: (sessionId: string, cwd: string) => Promise<void>;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -47,6 +51,8 @@ let reconnectAttempts = 0;
 let thinkingStart: number | null = null;
 let messageCount = 0;
 let currentSessionId: string | null = null;
+// Explicit flag to prevent connect() from wiping pre-seeded history messages
+let _resuming = false;
 
 function send(msg: unknown): boolean {
   if (ws?.readyState === WebSocket.OPEN) {
@@ -66,23 +72,32 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   thinkingStartTime: null,
   thinkingDurations: {},
   lastError: null,
+  historySessionId: null,
+  historySessionCwd: null,
 
   connect: (sessionId: string) => {
+    const shouldPreserve = _resuming;
+    _resuming = false;
     get().disconnect();
     currentSessionId = sessionId;
-    messageCount = 0;
-    thinkingStart = null;
-    set({
-      messages: [],
-      status: "starting",
-      connected: false,
-      pendingApproval: null,
-      slashCommands: [],
-      thinkingText: "",
-      thinkingStartTime: null,
-      thinkingDurations: {},
-      lastError: null,
-    });
+
+    if (!shouldPreserve) {
+      messageCount = 0;
+      thinkingStart = null;
+      set({
+        messages: [],
+        status: "starting",
+        connected: false,
+        pendingApproval: null,
+        slashCommands: [],
+        thinkingText: "",
+        thinkingStartTime: null,
+        thinkingDurations: {},
+        lastError: null,
+        historySessionId: null,
+        historySessionCwd: null,
+      });
+    }
 
     const doConnect = () => {
       if (currentSessionId !== sessionId) return;
@@ -146,12 +161,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       socket.onclose = () => {
         ws = null;
+        // Only update state if this socket belongs to the current session
+        if (currentSessionId !== sessionId) return;
         set({ connected: false });
-        if (currentSessionId === sessionId && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts);
           reconnectAttempts++;
           reconnectTimer = setTimeout(doConnect, delay);
-        } else if (currentSessionId === sessionId) {
+        } else {
           set({ status: "disconnected", lastError: "Connection lost — reload to reconnect" });
         }
       };
@@ -175,6 +192,60 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   sendPrompt: (text) => {
+    const state = get();
+    // History mode — resume session and send first message
+    if (state.historySessionId) {
+      const { token } = useAuthStore.getState();
+      const sessStore = useSessionsStore.getState();
+      const cwd = state.historySessionCwd || sessStore.cwd;
+      const historyMessages = [...state.messages];
+      const historyId = state.historySessionId;
+      // Capture to detect if user navigated away before fetch completes
+      const expectedSessionId = currentSessionId;
+
+      // Clear error but keep historySessionId so retry works on failure
+      set({ lastError: null });
+
+      fetch("/api/sessions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resumeSessionId: historyId,
+          prompt: text,
+          cwd,
+          provider: "claude",
+        }),
+      })
+        .then(async (res) => {
+          // Stale closure guard: user switched sessions while fetch was in-flight
+          if (currentSessionId !== expectedSessionId && currentSessionId !== null) return;
+          if (res.status === 401) { useAuthStore.getState().logout(); return; }
+          if (res.ok) {
+            const session = await res.json();
+            // Clear history state now that resume succeeded
+            set({ historySessionId: null, historySessionCwd: null });
+            sessStore.setActiveSession(session.id);
+            sessStore.fetchSessions();
+            // Pre-seed with history messages, then connect WS for new messages
+            messageCount = historyMessages.length;
+            _resuming = true;
+            set({ messages: historyMessages, status: "starting" });
+            currentSessionId = session.id;
+            get().connect(session.id);
+          } else {
+            const errBody = await res.json().catch(() => null);
+            set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})` });
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to resume session:", err);
+          set({ lastError: "Unable to reach server" });
+        });
+
+      return true;
+    }
+
+    // Normal mode — send via WebSocket
     set({ lastError: null });
     return send({ type: "prompt", text });
   },
@@ -198,4 +269,45 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   interrupt: () => send({ type: "interrupt" }),
+
+  loadHistory: async (sessionId: string, cwd: string) => {
+    get().disconnect();
+    currentSessionId = null;
+    messageCount = 0;
+    set({
+      messages: [],
+      status: "history",
+      connected: false,
+      pendingApproval: null,
+      slashCommands: [],
+      thinkingText: "",
+      thinkingStartTime: null,
+      thinkingDurations: {},
+      lastError: null,
+      historySessionId: sessionId,
+      historySessionCwd: cwd,
+    });
+    const { token } = useAuthStore.getState();
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) { useAuthStore.getState().logout(); return; }
+      if (res.ok) {
+        const msgs = await res.json();
+        if (!Array.isArray(msgs)) {
+          set({ lastError: "Unexpected response from server" });
+          return;
+        }
+        messageCount = msgs.length;
+        set({ messages: msgs, status: "history" });
+      } else {
+        const errBody = await res.json().catch(() => null);
+        set({ lastError: errBody?.error ?? `Failed to load session history (${res.status})` });
+      }
+    } catch (err) {
+      console.error("Failed to load history:", err);
+      set({ lastError: "Unable to reach server" });
+    }
+  },
 }));

@@ -33,7 +33,6 @@ interface SessionsState {
   fetchConfig: () => Promise<void>;
   fetchSessions: () => Promise<void>;
   createSession: (opts: { prompt?: string; cwd: string }) => Promise<string | null>;
-  resumeSession: (historySessionId: string) => Promise<string | null>;
   deleteSession: (id: string) => Promise<boolean>;
 }
 
@@ -103,31 +102,6 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       set({ lastError: errBody?.error ?? `Failed to create session (${res.status})` });
     } catch (err) {
       console.error("Failed to create session:", err);
-      set({ lastError: "Unable to reach server" });
-    }
-    return null;
-  },
-
-  resumeSession: async (historySessionId) => {
-    const { token } = useAuthStore.getState();
-    const { cwd } = get();
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeSessionId: historySessionId, cwd, provider: "claude" }),
-      });
-      if (res.status === 401) { useAuthStore.getState().logout(); return null; }
-      if (res.ok) {
-        const session = await res.json();
-        set({ activeSessionId: session.id, lastError: null });
-        get().fetchSessions();
-        return session.id as string;
-      }
-      const errBody = await res.json().catch(() => null);
-      set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})` });
-    } catch (err) {
-      console.error("Failed to resume session:", err);
       set({ lastError: "Unable to reach server" });
     }
     return null;

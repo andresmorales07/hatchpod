@@ -177,6 +177,38 @@ export async function listSessionHistory(cwd: string): Promise<HistorySession[]>
   return listSessionHistoryInDir(cwdToProjectDir(cwd));
 }
 
+/** Find the JSONL file path for a given session ID across all project directories. */
+export async function findSessionFile(sessionId: string): Promise<string | null> {
+  if (!UUID_RE.test(sessionId)) return null;
+
+  const base = process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), ".claude", "projects");
+  let entries: Dirent[];
+  try {
+    entries = await readdir(base, { withFileTypes: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code !== "ENOENT") {
+      console.warn(`findSessionFile: failed to read projects directory ${base}:`, err);
+    }
+    return null;
+  }
+
+  for (const e of entries.filter((e) => e.isDirectory())) {
+    const filePath = join(base, e.name, `${sessionId}.jsonl`);
+    try {
+      await stat(filePath);
+      return filePath;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT") {
+        console.warn(`findSessionFile: unexpected error checking ${filePath}:`, err);
+      }
+      continue;
+    }
+  }
+  return null;
+}
+
 /** List all historical sessions across every Claude Code project directory. */
 export async function listAllSessionHistory(): Promise<HistorySession[]> {
   const base = process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), ".claude", "projects");

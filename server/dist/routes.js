@@ -2,9 +2,10 @@ import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
 import { listSessionsWithHistory, getSession, sessionToDTO, getSessionCount, createSession, deleteSession, } from "./sessions.js";
-import { listProviders } from "./providers/index.js";
+import { listProviders, getProvider } from "./providers/index.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
+const SESSION_HISTORY_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/history$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
 const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
@@ -146,6 +147,42 @@ export async function handleRequest(req, res) {
         }
         catch (err) {
             console.error("Failed to list sessions:", err);
+            json(res, 500, { error: "internal server error" });
+        }
+        return;
+    }
+    // GET /api/sessions/:id/history — session message history from provider storage
+    const historyMatch = pathname.match(SESSION_HISTORY_RE);
+    if (historyMatch && method === "GET") {
+        const sessionId = historyMatch[1];
+        if (!UUID_RE.test(sessionId)) {
+            json(res, 400, { error: "invalid session ID" });
+            return;
+        }
+        const provider = url.searchParams.get("provider") ?? "claude";
+        let adapter;
+        try {
+            adapter = getProvider(provider);
+        }
+        catch (err) {
+            console.warn(`History endpoint: unknown provider "${provider}":`, err);
+            json(res, 400, { error: "unknown provider" });
+            return;
+        }
+        if (!adapter.getSessionHistory) {
+            json(res, 404, { error: "provider does not support session history" });
+            return;
+        }
+        try {
+            const messages = await adapter.getSessionHistory(sessionId);
+            json(res, 200, messages);
+        }
+        catch (err) {
+            if (err instanceof Error && err.name === "SessionNotFound") {
+                json(res, 404, { error: "session history not found" });
+                return;
+            }
+            console.error(`Failed to get session history for ${sessionId}:`, err);
             json(res, 500, { error: "internal server error" });
         }
         return;

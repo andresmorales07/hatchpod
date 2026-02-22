@@ -90,4 +90,5 @@ export interface ProviderAdapter {
     readonly name: string;
     readonly id: string;
     run(options: ProviderSessionOptions): AsyncGenerator<NormalizedMessage, ProviderSessionResult, undefined>;
+    getSessionHistory?(sessionId: string): Promise<NormalizedMessage[]>;
 }

@@ -138,6 +138,38 @@ async function listSessionHistoryInDir(dirPath) {
 export async function listSessionHistory(cwd) {
     return listSessionHistoryInDir(cwdToProjectDir(cwd));
 }
+/** Find the JSONL file path for a given session ID across all project directories. */
+export async function findSessionFile(sessionId) {
+    if (!UUID_RE.test(sessionId))
+        return null;
+    const base = process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), ".claude", "projects");
+    let entries;
+    try {
+        entries = await readdir(base, { withFileTypes: true });
+    }
+    catch (err) {
+        const code = err?.code;
+        if (code !== "ENOENT") {
+            console.warn(`findSessionFile: failed to read projects directory ${base}:`, err);
+        }
+        return null;
+    }
+    for (const e of entries.filter((e) => e.isDirectory())) {
+        const filePath = join(base, e.name, `${sessionId}.jsonl`);
+        try {
+            await stat(filePath);
+            return filePath;
+        }
+        catch (err) {
+            const code = err?.code;
+            if (code !== "ENOENT") {
+                console.warn(`findSessionFile: unexpected error checking ${filePath}:`, err);
+            }
+            continue;
+        }
+    }
+    return null;
+}
 /** List all historical sessions across every Claude Code project directory. */
 export async function listAllSessionHistory() {
     const base = process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), ".claude", "projects");
