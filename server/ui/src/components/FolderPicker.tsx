@@ -1,43 +1,36 @@
 import { useState, useEffect, useCallback } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
+import { ChevronRight, FolderOpen } from "lucide-react";
 
 interface Props {
-  token: string;
   cwd: string;
   browseRoot: string;
   onCwdChange: (cwd: string) => void;
-  onStartSession: (cwd: string) => void;
 }
 
-export function FolderPicker({ token, cwd, browseRoot, onCwdChange, onStartSession }: Props) {
+export function FolderPicker({ cwd, browseRoot, onCwdChange }: Props) {
+  const token = useAuthStore((s) => s.token);
   const [open, setOpen] = useState(false);
   const [dirs, setDirs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const rootName = browseRoot.split("/").filter(Boolean).pop() ?? "root";
-
-  const relPath = cwd.startsWith(browseRoot)
-    ? cwd.slice(browseRoot.length).replace(/^\//, "")
-    : "";
-
+  const relPath = cwd.startsWith(browseRoot) ? cwd.slice(browseRoot.length).replace(/^\//, "") : "";
   const segments = relPath ? relPath.split("/") : [];
 
   const fetchDirs = useCallback(async (rel: string) => {
     setLoading(true);
     try {
       const params = rel ? `?path=${encodeURIComponent(rel)}` : "";
-      const res = await fetch(`/api/browse${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(`/api/browse${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const body = await res.json();
         setDirs(body.dirs);
       } else {
         setDirs([]);
       }
-    } catch (err) {
-      console.error("Failed to browse:", err);
+    } catch {
       setDirs([]);
     } finally {
       setLoading(false);
@@ -49,95 +42,53 @@ export function FolderPicker({ token, cwd, browseRoot, onCwdChange, onStartSessi
   }, [open, relPath, fetchDirs]);
 
   const navigateTo = (rel: string) => {
-    const newCwd = rel ? `${browseRoot}/${rel}` : browseRoot;
-    onCwdChange(newCwd);
+    onCwdChange(rel ? `${browseRoot}/${rel}` : browseRoot);
   };
 
   if (!browseRoot) return null;
 
   return (
     <div className="border-b border-border">
-      <div className="flex items-center">
-        <button
-          className="flex-1 min-w-0 flex items-center gap-2 w-full px-3 py-2.5 bg-transparent border-none text-foreground text-[0.8125rem] cursor-pointer text-left hover:bg-accent"
-          onClick={() => setOpen(!open)}
-          type="button"
-        >
-          <span className="shrink-0 text-[0.625rem] text-muted-foreground">{open ? "\u25BE" : "\u25B8"}</span>
-          <span className="flex items-center flex-wrap gap-0 min-w-0 overflow-hidden">
-            <span
-              className={cn(
-                "cursor-pointer font-mono text-xs hover:text-primary hover:underline",
-                segments.length === 0 ? "text-foreground" : "text-muted-foreground"
-              )}
-              onClick={(e) => { e.stopPropagation(); navigateTo(""); }}
-            >
-              {rootName}
-            </span>
-            {segments.map((seg, i) => (
-              <span key={i}>
-                <span className="text-muted-foreground mx-1 text-xs">/</span>
-                <span
-                  className={cn(
-                    "cursor-pointer font-mono text-xs hover:text-primary hover:underline",
-                    i === segments.length - 1 ? "text-foreground" : "text-muted-foreground"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigateTo(segments.slice(0, i + 1).join("/"));
-                  }}
-                >
-                  {seg}
-                </span>
-              </span>
-            ))}
+      <button
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-accent/50 transition-colors"
+        onClick={() => setOpen(!open)}
+        type="button"
+      >
+        <FolderOpen className="size-4 text-muted-foreground shrink-0" />
+        <span className="flex items-center gap-0.5 min-w-0 overflow-hidden font-mono text-xs">
+          <span
+            className={cn("cursor-pointer hover:text-primary", segments.length === 0 ? "text-foreground" : "text-muted-foreground")}
+            onClick={(e) => { e.stopPropagation(); navigateTo(""); }}
+          >
+            {rootName}
           </span>
-        </button>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              className="shrink-0 bg-transparent border-none text-muted-foreground text-[0.625rem] cursor-pointer px-2.5 py-1.5 leading-none hover:text-emerald-400"
-              onClick={() => onStartSession(cwd)}
-              type="button"
-            >
-              &#9654;
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Start session here</TooltipContent>
-        </Tooltip>
-      </div>
+          {segments.map((seg, i) => (
+            <span key={i} className="flex items-center">
+              <ChevronRight className="size-3 text-muted-foreground mx-0.5" />
+              <span
+                className={cn("cursor-pointer hover:text-primary", i === segments.length - 1 ? "text-foreground" : "text-muted-foreground")}
+                onClick={(e) => { e.stopPropagation(); navigateTo(segments.slice(0, i + 1).join("/")); }}
+              >
+                {seg}
+              </span>
+            </span>
+          ))}
+        </span>
+      </button>
       {open && (
         <div className="max-h-[200px] overflow-y-auto border-t border-border">
           {loading && <div className="px-3 py-2 text-xs text-muted-foreground">Loading...</div>}
-          {!loading && dirs.length === 0 && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">No subdirectories</div>
-          )}
-          {!loading && dirs.map((dir) => {
-            const dirCwd = relPath ? `${browseRoot}/${relPath}/${dir}` : `${browseRoot}/${dir}`;
-            return (
-              <div key={dir} className="flex items-center">
-                <button
-                  className="flex-1 min-w-0 block w-full px-3 py-1.5 pl-6 bg-transparent border-none text-foreground text-[0.8125rem] font-mono cursor-pointer text-left hover:bg-accent hover:text-primary"
-                  onClick={() => navigateTo(relPath ? `${relPath}/${dir}` : dir)}
-                  type="button"
-                >
-                  {dir}
-                </button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      className="shrink-0 bg-transparent border-none text-muted-foreground text-[0.625rem] cursor-pointer px-2.5 py-1.5 leading-none hover:text-emerald-400"
-                      onClick={() => onStartSession(dirCwd)}
-                      type="button"
-                    >
-                      &#9654;
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Start session in this folder</TooltipContent>
-                </Tooltip>
-              </div>
-            );
-          })}
+          {!loading && dirs.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">No subdirectories</div>}
+          {!loading && dirs.map((dir) => (
+            <button
+              key={dir}
+              className="w-full flex items-center gap-2 px-3 py-1.5 pl-8 text-sm font-mono text-left hover:bg-accent/50 hover:text-primary transition-colors"
+              onClick={() => navigateTo(relPath ? `${relPath}/${dir}` : dir)}
+              type="button"
+            >
+              {dir}
+            </button>
+          ))}
         </div>
       )}
     </div>
