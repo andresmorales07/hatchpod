@@ -156,12 +156,19 @@ export async function handleRequest(req, res) {
     if (historyMatch && method === "GET") {
         const sessionId = historyMatch[1];
         const provider = url.searchParams.get("provider") ?? "claude";
+        let adapter;
         try {
-            const adapter = getProvider(provider);
-            if (!adapter.getSessionHistory) {
-                json(res, 404, { error: "provider does not support session history" });
-                return;
-            }
+            adapter = getProvider(provider);
+        }
+        catch {
+            json(res, 400, { error: "unknown provider" });
+            return;
+        }
+        if (!adapter.getSessionHistory) {
+            json(res, 404, { error: "provider does not support session history" });
+            return;
+        }
+        try {
             const messages = await adapter.getSessionHistory(sessionId);
             json(res, 200, messages);
         }

@@ -36,6 +36,7 @@ export function ChatPage() {
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
+  const sessionStatus = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id)?.status);
 
   useEffect(() => {
     if (activeSessionId && activeSessionId !== id) {
@@ -52,16 +53,17 @@ export function ChatPage() {
     if (!id) return;
     useSessionsStore.getState().setActiveSession(id);
 
-    const sessions = useSessionsStore.getState().sessions;
-    const session = sessions.find((s) => s.id === id);
-
-    if (session?.status === "history") {
-      loadHistory(id, session.cwd);
-    } else {
+    if (sessionStatus === "history") {
+      const session = useSessionsStore.getState().sessions.find((s) => s.id === id);
+      loadHistory(id, session?.cwd ?? "");
+    } else if (sessionStatus !== undefined) {
       connect(id);
+    } else {
+      // Sessions not loaded yet — trigger fetch; effect re-runs when sessionStatus updates
+      useSessionsStore.getState().fetchSessions();
     }
     return () => disconnect();
-  }, [id, connect, disconnect, loadHistory]);
+  }, [id, sessionStatus, connect, disconnect, loadHistory]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
