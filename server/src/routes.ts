@@ -11,12 +11,13 @@ import {
   interruptSession,
   deleteSession,
 } from "./sessions.js";
-import { listProviders } from "./providers/index.js";
+import { listProviders, getProvider } from "./providers/index.js";
 import type { CreateSessionRequest } from "./types.js";
 
 const startTime = Date.now();
 
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
+const SESSION_HISTORY_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/history$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
@@ -167,6 +168,26 @@ export async function handleRequest(
       json(res, 200, sessions);
     } catch (err) {
       console.error("Failed to list sessions:", err);
+      json(res, 500, { error: "internal server error" });
+    }
+    return;
+  }
+
+  // GET /api/sessions/:id/history — session message history from provider storage
+  const historyMatch = pathname.match(SESSION_HISTORY_RE);
+  if (historyMatch && method === "GET") {
+    const sessionId = historyMatch[1];
+    const provider = url.searchParams.get("provider") ?? "claude";
+    try {
+      const adapter = getProvider(provider);
+      if (!adapter.getSessionHistory) {
+        json(res, 404, { error: "provider does not support session history" });
+        return;
+      }
+      const messages = await adapter.getSessionHistory(sessionId);
+      json(res, 200, messages);
+    } catch (err) {
+      console.error(`Failed to get session history for ${sessionId}:`, err);
       json(res, 500, { error: "internal server error" });
     }
     return;
