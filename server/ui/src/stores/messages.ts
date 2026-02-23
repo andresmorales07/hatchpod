@@ -287,21 +287,18 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   approve: (toolUseId, answers) => {
-    if (send({ type: "approve", toolUseId, ...(answers ? { answers } : {}) })) {
-      set({ pendingApproval: null });
-    }
+    send({ type: "approve", toolUseId, ...(answers ? { answers } : {}) });
+    set({ pendingApproval: null });
   },
 
   approveAlways: (toolUseId) => {
-    if (send({ type: "approve", toolUseId, alwaysAllow: true })) {
-      set({ pendingApproval: null });
-    }
+    send({ type: "approve", toolUseId, alwaysAllow: true });
+    set({ pendingApproval: null });
   },
 
   deny: (toolUseId, message) => {
-    if (send({ type: "deny", toolUseId, message })) {
-      set({ pendingApproval: null });
-    }
+    send({ type: "deny", toolUseId, message });
+    set({ pendingApproval: null });
   },
 
   interrupt: () => send({ type: "interrupt" }),

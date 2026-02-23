@@ -138,12 +138,16 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
           }
         }
         const alwaysAllow = parsed.alwaysAllow === true;
-        handleApproval(session, parsed.toolUseId, true, undefined, answers, alwaysAllow);
+        if (!handleApproval(session, parsed.toolUseId, true, undefined, answers, alwaysAllow)) {
+          ws.send(JSON.stringify({ type: "error", message: "no matching pending approval" } satisfies ServerMessage));
+        }
         break;
       }
 
       case "deny":
-        handleApproval(session, parsed.toolUseId, false, parsed.message);
+        if (!handleApproval(session, parsed.toolUseId, false, parsed.message)) {
+          ws.send(JSON.stringify({ type: "error", message: "no matching pending approval" } satisfies ServerMessage));
+        }
         break;
 
       case "interrupt":
