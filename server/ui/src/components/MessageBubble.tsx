@@ -10,7 +10,6 @@ import { ChevronDown, Wrench, AlertCircle, Bot } from "lucide-react";
 
 interface Props {
   message: NormalizedMessage;
-  thinkingDurationMs?: number | null;
   toolResults: Map<string, ToolResultPart>;
 }
 

@@ -58,7 +58,7 @@ export function ChatPage() {
   const isDesktop = useIsDesktop();
   const {
     messages, slashCommands, status, source, connected, pendingApproval, lastError,
-    thinkingText, thinkingStartTime, thinkingDurations,
+    thinkingText, thinkingStartTime,
     hasOlderMessages, loadingOlderMessages, loadOlderMessages, serverTasks,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
   } = useMessagesStore();
@@ -153,14 +153,6 @@ export function ChatPage() {
     if (isAtBottom) scrollToBottom();
   }, [messages, thinkingText, isAtBottom, scrollToBottom]);
 
-  // Save scrollHeight before DOM updates (for scroll preservation on prepend)
-  useLayoutEffect(() => {
-    const el = scrollContainerRef.current;
-    if (el) {
-      prevScrollHeightRef.current = el.scrollHeight;
-    }
-  });
-
   // Restore scroll position after messages are prepended
   useLayoutEffect(() => {
     const el = scrollContainerRef.current;
@@ -169,7 +161,7 @@ export function ChatPage() {
     const prevLen = prevMessagesLenRef.current;
     const currentLen = messages.length;
 
-    // Detect prepend: messages grew and the first message changed
+    // Detect prepend: messages grew and user is scrolled up
     if (currentLen > prevLen && prevLen > 0 && !isAtBottom) {
       const heightDiff = el.scrollHeight - prevScrollHeightRef.current;
       if (heightDiff > 0) {
@@ -186,8 +178,10 @@ export function ChatPage() {
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD;
     setIsAtBottom(atBottom);
 
-    // Scroll-up pagination trigger
+    // Scroll-up pagination trigger — capture scrollHeight before the load
+    // so the layout effect can restore position after messages are prepended
     if (el.scrollTop < SCROLL_UP_TRIGGER && hasOlderMessages && !loadingOlderMessages) {
+      prevScrollHeightRef.current = el.scrollHeight;
       loadOlderMessages();
     }
   }, [hasOlderMessages, loadingOlderMessages, loadOlderMessages]);
@@ -232,7 +226,6 @@ export function ChatPage() {
               <MessageBubble
                 key={`${msg.role}-${msg.index}`}
                 message={msg}
-                thinkingDurationMs={thinkingDurations[msg.index] ?? (msg.role === "assistant" ? msg.thinkingDurationMs : null) ?? null}
                 toolResults={toolResults}
               />
             ))}

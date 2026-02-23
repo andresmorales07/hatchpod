@@ -70,6 +70,7 @@ Two Docker volumes persist state across container restarts:
 │   │   ├── routes.ts       # REST route handlers (sessions, browse, history)
 │   │   ├── ws.ts           # WebSocket handler
 │   │   ├── types.ts        # Shared TypeScript interfaces
+│   │   ├── task-extractor.ts  # Server-side task extraction from messages
 │   │   └── providers/      # Provider abstraction layer
 │   │       ├── types.ts    # NormalizedMessage, ProviderAdapter interface
 │   │       ├── claude-adapter.ts  # Claude SDK adapter (sole SDK import)
@@ -86,7 +87,10 @@ Two Docker volumes persist state across container restarts:
 │           ├── types.ts            # UI-side normalized message types
 │           ├── lib/
 │           │   ├── utils.ts        # cn() class merge utility (tailwind-merge + clsx)
-│           │   └── sessions.ts     # Session API helpers
+│           │   ├── sessions.ts     # Session API helpers
+│           │   ├── message-cleanup.ts # Message text cleanup utilities
+│           │   ├── syntax.ts       # Shared PrismLight language registration
+│           │   └── tools.ts        # Tool summary extraction (getToolSummary)
 │           ├── hooks/
 │           │   ├── useMediaQuery.ts # Responsive breakpoint hook
 │           │   └── useSwipe.ts     # Touch swipe gesture hook
@@ -109,7 +113,8 @@ Two Docker volumes persist state across container restarts:
 │               ├── SessionCard.tsx          # Session list item card
 │               ├── Sidebar.tsx              # Navigation sidebar
 │               ├── SlashCommandDropdown.tsx # Slash command autocomplete
-│               ├── ThinkingBlock.tsx        # Expandable thinking/reasoning display
+│               ├── FileDiffCard.tsx         # Syntax-highlighted file diffs for Write/Edit
+│               ├── TaskList.tsx             # Persistent task list display
 │               ├── ThinkingIndicator.tsx    # Animated thinking spinner
 │               ├── WorkspaceFilter.tsx      # Workspace filter dropdown
 │               └── ui/                      # shadcn/ui primitives
