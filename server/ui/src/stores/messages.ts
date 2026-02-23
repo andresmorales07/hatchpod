@@ -166,6 +166,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts);
           reconnectAttempts++;
+          set({ lastError: `Reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})…` });
           reconnectTimer = setTimeout(doConnect, delay);
         } else {
           set({ status: "disconnected", lastError: "Connection lost — reload to reconnect" });
@@ -215,7 +216,19 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       })
         .then(async (res) => {
           // Stale closure guard: user switched sessions while fetch was in-flight
-          if (currentSessionId !== expectedSessionId && currentSessionId !== null) return;
+          if (currentSessionId !== expectedSessionId && currentSessionId !== null) {
+            // Clean up the orphaned session so it doesn't linger on the server
+            if (res.ok) {
+              const orphan = await res.json().catch(() => null);
+              if (orphan?.id) {
+                fetch(`/api/sessions/${orphan.id}`, {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${token}` },
+                }).catch(() => {});
+              }
+            }
+            return;
+          }
           if (res.status === 401) { useAuthStore.getState().logout(); return; }
           if (res.ok) {
             const session = await res.json();

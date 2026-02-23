@@ -215,7 +215,11 @@ export async function listAllSessionHistory(): Promise<HistorySession[]> {
   let entries: Dirent[];
   try {
     entries = await readdir(base, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code !== "ENOENT") {
+      console.warn(`listAllSessionHistory: failed to read projects directory ${base}:`, err);
+    }
     return [];
   }
   const results: HistorySession[] = [];

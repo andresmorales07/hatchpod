@@ -204,7 +204,13 @@ export class SessionWatcher {
         await this.pollSession(sessionId, watched);
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          // File doesn't exist (yet, or was deleted) — skip silently
+          // File was deleted after we started tracking it — reset offset
+          // so we re-read from the beginning if it reappears.
+          if (watched.byteOffset > 0) {
+            console.warn(`SessionWatcher: file disappeared for session ${sessionId}, resetting offset`);
+            watched.byteOffset = 0;
+            watched.lineBuffer = "";
+          }
           continue;
         }
         console.error(`SessionWatcher: error polling session ${sessionId}:`, err);
@@ -240,7 +246,7 @@ export class SessionWatcher {
     try {
       await fh.read(buffer, 0, bytesToRead, watched.byteOffset);
     } finally {
-      await fh.close();
+      await fh.close().catch(() => {});
     }
 
     watched.byteOffset = fileSize;

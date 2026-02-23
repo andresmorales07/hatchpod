@@ -124,8 +124,10 @@ export function getSessionCount() {
  * and other runtime-only events that don't come from the JSONL file.
  */
 export function broadcastToSession(sessionId, msg) {
-    if (!watcher)
+    if (!watcher) {
+        console.error(`broadcastToSession(${sessionId}): watcher not initialized — message dropped`);
         return;
+    }
     watcher.broadcastToSubscribers(sessionId, msg);
 }
 export async function createSession(req) {
