@@ -91,6 +91,9 @@ export function SessionCard({ session, isActive, onClick }: Props) {
           </p>
         )}
       </div>
+      <Badge variant="secondary" className="text-[0.625rem] px-1.5 py-0 shrink-0">
+        {session.provider}
+      </Badge>
       {session.hasPendingApproval && (
         <Badge variant="destructive" className="text-[0.625rem] px-1.5 py-0 shrink-0">!</Badge>
       )}
