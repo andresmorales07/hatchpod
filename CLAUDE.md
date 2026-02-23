@@ -213,6 +213,24 @@ Open `http://localhost:5173` (NOT port 8080). UI changes hot-reload instantly â€
 
 **When to rebuild:** Only rebuild `server/dist/` when `server/src/` (backend TypeScript) changes. Only rebuild `server/public/` before committing (use `/build-and-test` skill).
 
+### Developing Inside Hatchpod Itself
+
+When Claude Code runs inside the hatchpod container, the s6-managed API server is already running on port 8080 with its own `API_PASSWORD` (inherited from the container environment). To test changes to `server/src/` or `server/ui/src/` without interfering with the production server:
+
+```bash
+# Detect: check if s6 API server is already on port 8080
+curl -s http://localhost:8080/healthz | grep -q '"status":"ok"'
+
+# Start a separate API server on a different port with a known password
+cd server && npm run build && API_PASSWORD=test PORT=9080 node dist/index.js &
+
+# Open http://localhost:9080 to test (password: "test")
+# Or use Vite dev server pointed at the test API:
+cd server/ui && VITE_API_PORT=9080 npx vite --host &
+```
+
+The test server on port 9080 can serve CLI session history and test-provider sessions, but **cannot run Claude sessions** (it lacks the Claude API credentials that the s6-managed server inherits from the container environment). To test live Claude sessions, use the s6-managed server on port 8080.
+
 ## Key Conventions
 
 - Feature branches must use the `feature/<branch-name>` naming convention
