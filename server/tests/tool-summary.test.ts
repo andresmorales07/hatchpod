@@ -4,108 +4,161 @@ import { getToolSummary } from "../ui/src/lib/tools";
 describe("getToolSummary", () => {
   describe("file path tools (Read, Write, Edit, NotebookEdit)", () => {
     it("returns file_path for Read", () => {
-      expect(getToolSummary("Read", { file_path: "/src/index.ts" })).toBe("/src/index.ts");
+      expect(getToolSummary("Read", { file_path: "/src/index.ts" })).toEqual({
+        description: "/src/index.ts",
+      });
     });
 
     it("returns file_path for Write", () => {
-      expect(getToolSummary("Write", { file_path: "/tmp/out.txt", content: "hello" })).toBe("/tmp/out.txt");
+      expect(getToolSummary("Write", { file_path: "/tmp/out.txt", content: "hello" })).toEqual({
+        description: "/tmp/out.txt",
+      });
     });
 
     it("returns file_path for Edit", () => {
-      expect(getToolSummary("Edit", { file_path: "/src/app.ts", old_string: "a", new_string: "b" })).toBe("/src/app.ts");
+      expect(getToolSummary("Edit", { file_path: "/src/app.ts", old_string: "a", new_string: "b" })).toEqual({
+        description: "/src/app.ts",
+      });
     });
 
     it("returns file_path for NotebookEdit", () => {
-      expect(getToolSummary("NotebookEdit", { file_path: "/nb.ipynb", new_source: "x" })).toBe("/nb.ipynb");
+      expect(getToolSummary("NotebookEdit", { file_path: "/nb.ipynb", new_source: "x" })).toEqual({
+        description: "/nb.ipynb",
+      });
     });
 
     it("matches tool names containing the substring", () => {
-      expect(getToolSummary("mcp__fs__Read", { file_path: "/foo" })).toBe("/foo");
+      expect(getToolSummary("mcp__fs__Read", { file_path: "/foo" })).toEqual({
+        description: "/foo",
+      });
     });
   });
 
   describe("Bash", () => {
-    it("returns the command", () => {
-      expect(getToolSummary("Bash", { command: "ls -la" })).toBe("ls -la");
+    it("returns description and command", () => {
+      const result = getToolSummary("Bash", { command: "ls -la", description: "List files" });
+      expect(result).toEqual({ description: "List files", command: "ls -la" });
     });
 
-    it("truncates commands longer than 80 chars", () => {
+    it("falls back to command as description when no description field", () => {
+      const result = getToolSummary("Bash", { command: "ls -la" });
+      expect(result).toEqual({ description: "ls -la", command: "ls -la" });
+    });
+
+    it("truncates long commands in the command field at 120 chars", () => {
+      const long = "x".repeat(150);
+      const result = getToolSummary("Bash", { command: long });
+      expect(result.command).toBe("x".repeat(117) + "...");
+      expect(result.command!.length).toBe(120);
+    });
+
+    it("truncates command used as fallback description at 80 chars", () => {
       const long = "x".repeat(100);
       const result = getToolSummary("Bash", { command: long });
-      expect(result).toBe("x".repeat(77) + "...");
-      expect(result.length).toBe(80);
+      expect(result.description).toBe("x".repeat(77) + "...");
+      expect(result.description.length).toBe(80);
     });
 
-    it("does not truncate commands exactly 80 chars", () => {
-      const exact = "y".repeat(80);
-      expect(getToolSummary("Bash", { command: exact })).toBe(exact);
+    it("does not truncate short commands", () => {
+      const result = getToolSummary("Bash", { command: "git status" });
+      expect(result.command).toBe("git status");
     });
   });
 
-  describe("Glob and Grep", () => {
-    it("returns pattern for Glob", () => {
-      expect(getToolSummary("Glob", { pattern: "**/*.ts" })).toBe("**/*.ts");
+  describe("Grep", () => {
+    it("returns descriptive summary with pattern", () => {
+      expect(getToolSummary("Grep", { pattern: "TODO|FIXME" })).toEqual({
+        description: 'Search for "TODO|FIXME"',
+      });
     });
 
-    it("returns pattern for Grep", () => {
-      expect(getToolSummary("Grep", { pattern: "TODO|FIXME" })).toBe("TODO|FIXME");
+    it("includes path when provided", () => {
+      expect(getToolSummary("Grep", { pattern: "TODO", path: "server/" })).toEqual({
+        description: 'Search for "TODO" in server/',
+      });
+    });
+  });
+
+  describe("Glob", () => {
+    it("returns descriptive summary with pattern", () => {
+      expect(getToolSummary("Glob", { pattern: "**/*.ts" })).toEqual({
+        description: 'Find files matching "**/*.ts"',
+      });
+    });
+
+    it("includes path when provided", () => {
+      expect(getToolSummary("Glob", { pattern: "*.md", path: "docs/" })).toEqual({
+        description: 'Find files matching "*.md" in docs/',
+      });
     });
   });
 
   describe("WebFetch", () => {
-    it("returns the url", () => {
-      expect(getToolSummary("WebFetch", { url: "https://example.com" })).toBe("https://example.com");
+    it("returns descriptive summary", () => {
+      expect(getToolSummary("WebFetch", { url: "https://example.com" })).toEqual({
+        description: "Fetch https://example.com",
+      });
     });
   });
 
   describe("Task", () => {
     it("returns the description", () => {
-      expect(getToolSummary("Task", { description: "Explore codebase" })).toBe("Explore codebase");
+      expect(getToolSummary("Task", { description: "Explore codebase" })).toEqual({
+        description: "Explore codebase",
+      });
     });
   });
 
   describe("WebSearch", () => {
-    it("returns the query", () => {
-      expect(getToolSummary("WebSearch", { query: "react hooks" })).toBe("react hooks");
+    it("returns descriptive summary", () => {
+      expect(getToolSummary("WebSearch", { query: "react hooks" })).toEqual({
+        description: 'Search: "react hooks"',
+      });
     });
   });
 
   describe("fallback behavior", () => {
     it("returns first string value for unknown tools", () => {
-      expect(getToolSummary("CustomTool", { foo: 42, bar: "hello" })).toBe("hello");
+      expect(getToolSummary("CustomTool", { foo: 42, bar: "hello" })).toEqual({
+        description: "hello",
+      });
     });
 
     it("truncates long fallback values", () => {
       const long = "z".repeat(100);
       const result = getToolSummary("CustomTool", { val: long });
-      expect(result).toBe("z".repeat(77) + "...");
+      expect(result.description).toBe("z".repeat(77) + "...");
     });
 
     it("skips empty string values in fallback", () => {
-      expect(getToolSummary("CustomTool", { empty: "", real: "found" })).toBe("found");
+      expect(getToolSummary("CustomTool", { empty: "", real: "found" })).toEqual({
+        description: "found",
+      });
     });
 
-    it("returns empty string when no string values exist", () => {
-      expect(getToolSummary("CustomTool", { num: 42, flag: true })).toBe("");
+    it("returns empty description when no string values exist", () => {
+      expect(getToolSummary("CustomTool", { num: 42, flag: true })).toEqual({
+        description: "",
+      });
     });
 
-    it("returns empty string for empty object", () => {
-      expect(getToolSummary("CustomTool", {})).toBe("");
+    it("returns empty description for empty object", () => {
+      expect(getToolSummary("CustomTool", {})).toEqual({ description: "" });
     });
   });
 
   describe("edge cases", () => {
-    it("returns empty string for null input", () => {
-      expect(getToolSummary("Read", null)).toBe("");
+    it("returns empty description for null input", () => {
+      expect(getToolSummary("Read", null)).toEqual({ description: "" });
     });
 
-    it("returns empty string for undefined input", () => {
-      expect(getToolSummary("Read", undefined)).toBe("");
+    it("returns empty description for undefined input", () => {
+      expect(getToolSummary("Read", undefined)).toEqual({ description: "" });
     });
 
-    it("returns empty string for non-object input", () => {
-      expect(getToolSummary("Read", "string")).toBe("");
-      expect(getToolSummary("Read", 42)).toBe("");
+    it("returns empty description for non-object input", () => {
+      expect(getToolSummary("Read", "string")).toEqual({ description: "" });
+      expect(getToolSummary("Read", 42)).toEqual({ description: "" });
     });
   });
 });

@@ -125,7 +125,7 @@ export function FileDiffCard({ toolUse, toolResult }: Props) {
   const basename = filePath.split("/").pop() ?? filePath;
   const language = detectLanguage(filePath);
   const isError = toolResult?.isError ?? false;
-  const summary = getToolSummary(toolUse.toolName, toolUse.input);
+  const summary = getToolSummary(toolUse.toolName, toolUse.input).description;
 
   // Edit-specific data
   const editInput = isEdit ? (input as EditInput) : null;
