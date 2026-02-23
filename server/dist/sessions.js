@@ -4,6 +4,18 @@ import { randomUUID } from "node:crypto";
 // ── ActiveSession map (runtime handles for API-driven sessions) ──
 const sessions = new Map();
 const MAX_SESSIONS = 50;
+const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// Evict completed/errored/interrupted sessions older than TTL
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, s] of sessions) {
+        if ((s.status === "completed" || s.status === "error" || s.status === "interrupted") &&
+            now - s.createdAt.getTime() > SESSION_TTL_MS) {
+            sessions.delete(id);
+        }
+    }
+}, CLEANUP_INTERVAL_MS).unref();
 // ── SessionWatcher singleton ──
 let watcher = null;
 /**
@@ -31,8 +43,8 @@ export function listSessions() {
     return Array.from(sessions.values()).map((s) => ({
         id: s.sessionId,
         status: s.status,
-        createdAt: new Date().toISOString(), // ActiveSession has no createdAt — approximate
-        lastModified: new Date().toISOString(),
+        createdAt: s.createdAt.toISOString(),
+        lastModified: s.createdAt.toISOString(),
         numTurns: 0,
         totalCostUsd: 0,
         hasPendingApproval: s.pendingApproval !== null,
@@ -130,6 +142,9 @@ export async function createSession(req) {
         sessionId: id,
         provider: req.provider ?? "claude",
         cwd: req.cwd ?? (process.env.DEFAULT_CWD ?? process.cwd()),
+        createdAt: new Date(),
+        permissionMode: req.permissionMode ?? "default",
+        model: req.model,
         abortController: new AbortController(),
         pendingApproval: null,
         alwaysAllowedTools: new Set(),
@@ -209,6 +224,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
             session.sessionId = sessionResult.providerSessionId;
             sessions.delete(oldId);
             sessions.set(session.sessionId, session);
+            watcher?.remap(oldId, session.sessionId);
         }
         // Status may have been mutated externally by interruptSession()
         const currentStatus = session.status;
@@ -218,8 +234,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
     }
     catch (err) {
         const currentStatus = session.status;
-        const isAbortError = err instanceof Error &&
-            (err.name === "AbortError" || err.message === "aborted" || err.message.includes("abort"));
+        const isAbortError = session.abortController.signal.aborted;
         if (currentStatus === "interrupted" && isAbortError) {
             // Expected abort from interruption — not an error
         }
@@ -296,8 +311,6 @@ export async function sendFollowUp(session, text) {
     }
     session.abortController = new AbortController();
     const isFirstMessage = session.status === "idle";
-    runSession(session, text, "default", undefined, undefined, isFirstMessage
-        ? (session.sessionId ?? undefined)
-        : (session.sessionId));
+    runSession(session, text, session.permissionMode, session.model, undefined, isFirstMessage ? undefined : session.sessionId);
     return true;
 }

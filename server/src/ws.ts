@@ -69,7 +69,10 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
   // This works for BOTH API sessions and CLI sessions.
   watcher.subscribe(sessionId, ws).catch((err) => {
     console.error(`SessionWatcher subscribe failed for ${sessionId}:`, err);
-    // Don't close — the session might be a CLI session without a file yet
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: "error", message: "failed to load message history" } satisfies ServerMessage));
+      ws.send(JSON.stringify({ type: "replay_complete" } satisfies ServerMessage));
+    }
   });
 
   // Send source and status info
@@ -100,7 +103,7 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
   }, 30_000);
 
   // Handle incoming messages
-  ws.on("message", (data: Buffer | string) => {
+  ws.on("message", async (data: Buffer | string) => {
     let parsed: ClientMessage;
     try {
       parsed = JSON.parse(typeof data === "string" ? data : data.toString()) as ClientMessage;
@@ -118,9 +121,13 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
     }
 
     switch (parsed.type) {
-      case "prompt":
-        sendFollowUp(session, parsed.text);
+      case "prompt": {
+        const accepted = await sendFollowUp(session, parsed.text);
+        if (!accepted) {
+          ws.send(JSON.stringify({ type: "error", message: "session is busy" } satisfies ServerMessage));
+        }
         break;
+      }
 
       case "approve": {
         let answers: Record<string, string> | undefined = parsed.answers;

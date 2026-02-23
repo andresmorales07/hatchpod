@@ -55,7 +55,10 @@ function setupSessionConnection(ws, sessionId) {
     // This works for BOTH API sessions and CLI sessions.
     watcher.subscribe(sessionId, ws).catch((err) => {
         console.error(`SessionWatcher subscribe failed for ${sessionId}:`, err);
-        // Don't close — the session might be a CLI session without a file yet
+        if (ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: "error", message: "failed to load message history" }));
+            ws.send(JSON.stringify({ type: "replay_complete" }));
+        }
     });
     // Send source and status info
     const source = activeSession ? "api" : "cli";
@@ -82,7 +85,7 @@ function setupSessionConnection(ws, sessionId) {
         }
     }, 30_000);
     // Handle incoming messages
-    ws.on("message", (data) => {
+    ws.on("message", async (data) => {
         let parsed;
         try {
             parsed = JSON.parse(typeof data === "string" ? data : data.toString());
@@ -99,9 +102,13 @@ function setupSessionConnection(ws, sessionId) {
             return;
         }
         switch (parsed.type) {
-            case "prompt":
-                sendFollowUp(session, parsed.text);
+            case "prompt": {
+                const accepted = await sendFollowUp(session, parsed.text);
+                if (!accepted) {
+                    ws.send(JSON.stringify({ type: "error", message: "session is busy" }));
+                }
                 break;
+            }
             case "approve": {
                 let answers = parsed.answers;
                 if (answers !== undefined) {

@@ -431,7 +431,8 @@ export class ClaudeAdapter implements ProviderAdapter {
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(line);
-    } catch {
+    } catch (err) {
+      console.warn(`normalizeFileLine: failed to parse JSONL at index ${index}:`, (err as Error).message);
       return null;
     }
 

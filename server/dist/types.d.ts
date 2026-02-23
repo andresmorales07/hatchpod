@@ -9,6 +9,9 @@ export interface ActiveSession {
     sessionId: string;
     provider: string;
     cwd: string;
+    createdAt: Date;
+    permissionMode: PermissionModeCommon;
+    model: string | undefined;
     abortController: AbortController;
     pendingApproval: PendingApproval | null;
     alwaysAllowedTools: Set<string>;

@@ -69,6 +69,17 @@ export class SessionWatcher {
             this.sessions.delete(sessionId);
         }
     }
+    /**
+     * Remap a session from one ID to another. Moves all subscribers
+     * so broadcasts under the new ID reach existing clients.
+     */
+    remap(oldId, newId) {
+        const watched = this.sessions.get(oldId);
+        if (!watched)
+            return;
+        this.sessions.delete(oldId);
+        this.sessions.set(newId, watched);
+    }
     /** Start the global poll loop. Call once at server startup. */
     start(intervalMs = 200) {
         if (this.intervalHandle)
@@ -110,6 +121,9 @@ export class SessionWatcher {
                 this.send(client, { type: "replay_complete" });
                 return;
             }
+            // Non-ENOENT error — send error + replay_complete so the client doesn't hang
+            this.send(client, { type: "error", message: "failed to load message history" });
+            this.send(client, { type: "replay_complete" });
             throw err;
         }
         const contentBytes = Buffer.byteLength(content, "utf-8");
@@ -218,8 +232,13 @@ export class SessionWatcher {
     }
     /** Send a message to a single WebSocket client. */
     send(client, msg) {
-        if (client.readyState === 1) { // WebSocket.OPEN
+        if (client.readyState !== 1)
+            return;
+        try {
             client.send(JSON.stringify(msg));
+        }
+        catch {
+            // Client in bad state — will be cleaned up on next broadcast
         }
     }
     /**
@@ -237,8 +256,13 @@ export class SessionWatcher {
     broadcast(watched, msg) {
         const payload = JSON.stringify(msg);
         for (const client of watched.clients) {
-            if (client.readyState === 1) { // WebSocket.OPEN
-                client.send(payload);
+            if (client.readyState === 1) {
+                try {
+                    client.send(payload);
+                }
+                catch {
+                    watched.clients.delete(client);
+                }
             }
             else {
                 watched.clients.delete(client);

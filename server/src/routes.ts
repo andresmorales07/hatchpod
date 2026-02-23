@@ -138,8 +138,13 @@ export async function handleRequest(
       const result = await createSession(parsed);
       json(res, 201, { id: result.id, status: result.status });
     } catch (err) {
-      console.error("Failed to create session:", err);
-      json(res, 500, { error: "internal server error" });
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("maximum session limit")) {
+        json(res, 409, { error: message });
+      } else {
+        console.error("Failed to create session:", err);
+        json(res, 500, { error: "internal server error" });
+      }
     }
     return;
   }

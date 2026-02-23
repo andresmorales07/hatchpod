@@ -343,7 +343,8 @@ export class ClaudeAdapter {
         try {
             parsed = JSON.parse(line);
         }
-        catch {
+        catch (err) {
+            console.warn(`normalizeFileLine: failed to parse JSONL at index ${index}:`, err.message);
             return null;
         }
         const type = parsed.type;

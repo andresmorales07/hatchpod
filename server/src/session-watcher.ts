@@ -91,6 +91,17 @@ export class SessionWatcher {
     }
   }
 
+  /**
+   * Remap a session from one ID to another. Moves all subscribers
+   * so broadcasts under the new ID reach existing clients.
+   */
+  remap(oldId: string, newId: string): void {
+    const watched = this.sessions.get(oldId);
+    if (!watched) return;
+    this.sessions.delete(oldId);
+    this.sessions.set(newId, watched);
+  }
+
   /** Start the global poll loop. Call once at server startup. */
   start(intervalMs = 200): void {
     if (this.intervalHandle) return;
@@ -134,6 +145,9 @@ export class SessionWatcher {
         this.send(client, { type: "replay_complete" });
         return;
       }
+      // Non-ENOENT error — send error + replay_complete so the client doesn't hang
+      this.send(client, { type: "error", message: "failed to load message history" });
+      this.send(client, { type: "replay_complete" });
       throw err;
     }
 
@@ -253,8 +267,11 @@ export class SessionWatcher {
 
   /** Send a message to a single WebSocket client. */
   private send(client: WebSocket, msg: ServerMessage): void {
-    if (client.readyState === 1) { // WebSocket.OPEN
+    if (client.readyState !== 1) return;
+    try {
       client.send(JSON.stringify(msg));
+    } catch {
+      // Client in bad state — will be cleaned up on next broadcast
     }
   }
 
@@ -273,8 +290,12 @@ export class SessionWatcher {
   private broadcast(watched: WatchedSession, msg: ServerMessage): void {
     const payload = JSON.stringify(msg);
     for (const client of watched.clients) {
-      if (client.readyState === 1) { // WebSocket.OPEN
-        client.send(payload);
+      if (client.readyState === 1) {
+        try {
+          client.send(payload);
+        } catch {
+          watched.clients.delete(client);
+        }
       } else {
         watched.clients.delete(client);
       }

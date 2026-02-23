@@ -23,6 +23,11 @@ export declare class SessionWatcher {
      * Removes the session watch entirely if no clients remain.
      */
     unsubscribe(sessionId: string, client: WebSocket): void;
+    /**
+     * Remap a session from one ID to another. Moves all subscribers
+     * so broadcasts under the new ID reach existing clients.
+     */
+    remap(oldId: string, newId: string): void;
     /** Start the global poll loop. Call once at server startup. */
     start(intervalMs?: number): void;
     /** Stop polling. Call on server shutdown. */

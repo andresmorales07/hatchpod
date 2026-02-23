@@ -230,7 +230,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             get().connect(session.id);
           } else {
             const errBody = await res.json().catch(() => null);
-            set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})` });
+            set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})`, status: "error" });
           }
         })
         .catch((err) => {
