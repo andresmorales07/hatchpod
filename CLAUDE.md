@@ -311,4 +311,4 @@ Specialized review agents in `.claude/agents/`:
 
 Configured in `.claude/settings.json`:
 
-- **TypeScript type-check + ESLint** (PostToolUse) — Runs `tsc --noEmit` followed by `eslint` after any Edit/Write to files under `server/src/` or `server/ui/src/`. Catches type errors and lint issues immediately after edits. ESLint only runs if type-checking passes. Note: the hook paths in `.claude/settings.json` are hardcoded to the container path (`/home/hatchpod/workspace/repos/hatchpod/`); adjust when running Claude Code outside the container.
+- **TypeScript type-check + ESLint** (PostToolUse) — Runs `tsc --noEmit` followed by `eslint` after any Edit/Write to files under `server/src/` or `server/ui/src/`. Catches type errors and lint issues immediately after edits. ESLint only runs if type-checking passes.
