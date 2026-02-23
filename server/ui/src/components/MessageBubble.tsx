@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { NormalizedMessage, MessagePart, TextPart, ToolResultPart } from "../types";
 
 import { Markdown } from "./Markdown";
+import { FileDiffCard } from "./FileDiffCard";
 import { cn } from "@/lib/utils";
 import { getToolSummary } from "@/lib/tools";
 import { cleanMessageText } from "@/lib/message-cleanup";
@@ -123,6 +124,12 @@ function renderPart(
           </div>
         );
       }
+      // File diff rendering for Write/Edit
+      if (part.toolName === "Write" || part.toolName === "Edit") {
+        const result = toolResults.get(part.toolUseId) ?? null;
+        return <FileDiffCard key={i} toolUse={part} toolResult={result} />;
+      }
+
       const result = toolResults.get(part.toolUseId) ?? null;
       return <ToolCard key={i} toolUse={part} toolResult={result} />;
     }
