@@ -247,7 +247,7 @@ export class ClaudeAdapter implements ProviderAdapter {
                   if (decision.allow) {
                     return {
                       behavior: "allow" as const,
-                      ...(decision.updatedInput ? { updatedInput: decision.updatedInput } : {}),
+                      updatedInput: decision.updatedInput ?? input,
                       ...(decision.alwaysAllow && opts.suggestions
                         ? { updatedPermissions: opts.suggestions }
                         : {}),

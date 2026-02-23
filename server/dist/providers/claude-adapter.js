@@ -187,7 +187,7 @@ export class ClaudeAdapter {
                             if (decision.allow) {
                                 return {
                                     behavior: "allow",
-                                    ...(decision.updatedInput ? { updatedInput: decision.updatedInput } : {}),
+                                    updatedInput: decision.updatedInput ?? input,
                                     ...(decision.alwaysAllow && opts.suggestions
                                         ? { updatedPermissions: opts.suggestions }
                                         : {}),
