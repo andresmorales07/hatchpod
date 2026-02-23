@@ -219,7 +219,7 @@ export function ChatPage() {
       )}
 
       {/* Task list */}
-      {tasks.length > 0 && (
+      {tasks.length > 0 && tasks.some((t) => t.status !== "completed") && (
         <div className="max-w-3xl mx-auto px-4 w-full">
           <TaskList tasks={tasks} />
         </div>
