@@ -42,6 +42,14 @@ export class SessionWatcher {
     if (watched) {
       // Session already being watched — add client and replay from file
       watched.clients.add(client);
+      // Re-resolve file path if it was null at initial subscribe time
+      // (e.g., session was created with a temp UUID then remapped)
+      if (!watched.filePath) {
+        const filePath = await this.adapter.getSessionFilePath(sessionId);
+        if (filePath) {
+          watched.filePath = filePath;
+        }
+      }
       await this.replayToClient(watched, client);
       return;
     }
@@ -219,9 +227,18 @@ export class SessionWatcher {
   }
 
   /** Poll a single session for new data. */
-  private async pollSession(_sessionId: string, watched: WatchedSession): Promise<void> {
-    // No file to poll (e.g., test adapter) — live messages come via broadcastToSubscribers()
-    if (!watched.filePath) return;
+  private async pollSession(sessionId: string, watched: WatchedSession): Promise<void> {
+    if (!watched.filePath) {
+      // File path wasn't available at subscribe time (e.g., session created
+      // via API with a temp UUID, then remapped to the CLI session ID).
+      // Try to resolve it now — the JSONL file may exist under the new ID.
+      const filePath = await this.adapter.getSessionFilePath(sessionId);
+      if (filePath) {
+        watched.filePath = filePath;
+      } else {
+        return;
+      }
+    }
 
     let fileSize: number;
     try {
