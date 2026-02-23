@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowDown, ArrowLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TaskList } from "@/components/TaskList";
-import type { ToolResultPart } from "@/types";
+import type { ToolResultPart, TaskItem, TaskStatus } from "@/types";
 
 const statusStyles: Record<string, string> = {
   idle: "bg-emerald-500/15 text-emerald-400 border-transparent",
@@ -25,11 +25,30 @@ const statusStyles: Record<string, string> = {
 };
 
 const SCROLL_THRESHOLD = 100;
-export interface TaskItem {
-  id: string;
-  subject: string;
-  activeForm?: string;
-  status: "pending" | "in_progress" | "completed" | "deleted";
+
+const VALID_TASK_STATUSES = new Set<TaskStatus>(["pending", "in_progress", "completed", "deleted"]);
+
+function isValidTaskStatus(value: unknown): value is TaskStatus {
+  return typeof value === "string" && VALID_TASK_STATUSES.has(value as TaskStatus);
+}
+
+function parseTaskCreate(input: unknown): { subject: string; activeForm?: string } {
+  if (input == null || typeof input !== "object" || Array.isArray(input)) {
+    return { subject: "Untitled task" };
+  }
+  const rec = input as Record<string, unknown>;
+  return {
+    subject: typeof rec.subject === "string" ? rec.subject : "Untitled task",
+    activeForm: typeof rec.activeForm === "string" ? rec.activeForm : undefined,
+  };
+}
+
+function applyTaskUpdate(existing: TaskItem, input: unknown): void {
+  if (input == null || typeof input !== "object" || Array.isArray(input)) return;
+  const rec = input as Record<string, unknown>;
+  if (isValidTaskStatus(rec.status)) existing.status = rec.status;
+  if (typeof rec.subject === "string") existing.subject = rec.subject;
+  if (typeof rec.activeForm === "string") existing.activeForm = rec.activeForm;
 }
 
 export function ChatPage() {
@@ -78,9 +97,7 @@ export function ChatPage() {
       if (msg.role === "system") continue;
       for (const part of msg.parts) {
         if (part.type === "tool_use" && part.toolName === "TaskCreate") {
-          const input = part.input as Record<string, unknown> | undefined;
-          const subject = (input?.subject as string) || "Untitled task";
-          const activeForm = input?.activeForm as string | undefined;
+          const { subject, activeForm } = parseTaskCreate(part.input);
           // Temporarily keyed by toolUseId until we get the real task ID from the result
           const item: TaskItem = { id: part.toolUseId, subject, activeForm, status: "pending" };
           pendingCreates.set(part.toolUseId, item);
@@ -97,13 +114,12 @@ export function ChatPage() {
           }
         }
         if (part.type === "tool_use" && part.toolName === "TaskUpdate") {
-          const input = part.input as Record<string, unknown> | undefined;
-          const taskId = input?.taskId as string | undefined;
-          if (taskId && taskMap.has(taskId)) {
-            const existing = taskMap.get(taskId)!;
-            if (input?.status) existing.status = input.status as TaskItem["status"];
-            if (input?.subject) existing.subject = input.subject as string;
-            if (input?.activeForm) existing.activeForm = input.activeForm as string;
+          const input = part.input;
+          const taskId = input != null && typeof input === "object" && !Array.isArray(input)
+            ? (input as Record<string, unknown>).taskId
+            : undefined;
+          if (typeof taskId === "string" && taskMap.has(taskId)) {
+            applyTaskUpdate(taskMap.get(taskId)!, input);
           }
         }
       }

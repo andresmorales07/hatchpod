@@ -55,6 +55,7 @@ let _resuming = false;
 // Set during session ID remap to prevent disconnect/connect from tearing down
 // the still-valid WebSocket connection during React navigation
 let _redirectingTo: string | null = null;
+let _redirectTimeout: ReturnType<typeof setTimeout> | undefined;
 
 function send(msg: unknown): boolean {
   if (ws?.readyState === WebSocket.OPEN) {
@@ -81,9 +82,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     // new session ID (watcher remapped it). Skip the disconnect/reconnect cycle.
     if (_redirectingTo === sessionId && ws?.readyState === WebSocket.OPEN) {
       _redirectingTo = null;
+      clearTimeout(_redirectTimeout);
       return;
     }
     _redirectingTo = null;
+    clearTimeout(_redirectTimeout);
 
     const shouldPreserve = _resuming;
     _resuming = false;
@@ -158,7 +161,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             // already remapped by the watcher so we don't need to reconnect.
             const newId = msg.newSessionId;
             currentSessionId = newId;
+            clearTimeout(_redirectTimeout);
             _redirectingTo = newId;
+            // Safety: clear the redirect flag after 5s if connect() hasn't consumed it
+            _redirectTimeout = setTimeout(() => {
+              if (_redirectingTo === newId) _redirectingTo = null;
+            }, 5000);
             const sessStore = useSessionsStore.getState();
             sessStore.setActiveSession(newId);
             sessStore.fetchSessions();
@@ -184,6 +192,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       socket.onclose = () => {
         ws = null;
+        _redirectingTo = null;
         // Only update state if this socket belongs to the current session
         if (currentSessionId !== sessionId) return;
         set({ connected: false });
@@ -287,17 +296,26 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   approve: (toolUseId, answers) => {
-    send({ type: "approve", toolUseId, ...(answers ? { answers } : {}) });
+    if (!send({ type: "approve", toolUseId, ...(answers ? { answers } : {}) })) {
+      set({ lastError: "Failed to send approval — not connected" });
+      return;
+    }
     set({ pendingApproval: null });
   },
 
   approveAlways: (toolUseId) => {
-    send({ type: "approve", toolUseId, alwaysAllow: true });
+    if (!send({ type: "approve", toolUseId, alwaysAllow: true })) {
+      set({ lastError: "Failed to send approval — not connected" });
+      return;
+    }
     set({ pendingApproval: null });
   },
 
   deny: (toolUseId, message) => {
-    send({ type: "deny", toolUseId, message });
+    if (!send({ type: "deny", toolUseId, message })) {
+      set({ lastError: "Failed to send denial — not connected" });
+      return;
+    }
     set({ pendingApproval: null });
   },
 

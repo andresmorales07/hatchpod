@@ -18,6 +18,16 @@ export interface SystemEvent {
 }
 export type NormalizedMessage = UserMessage | AssistantMessage | SystemEvent;
 
+// Task items (extracted from tool_use messages in the chat)
+export type TaskStatus = "pending" | "in_progress" | "completed" | "deleted";
+
+export interface TaskItem {
+  id: string;
+  subject: string;
+  activeForm?: string;
+  status: TaskStatus;
+}
+
 // Slash commands
 export interface SlashCommand {
   name: string;

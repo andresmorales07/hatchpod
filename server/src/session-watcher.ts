@@ -83,12 +83,20 @@ export class SessionWatcher {
    * Removes the session watch entirely if no clients remain.
    */
   unsubscribe(sessionId: string, client: WebSocket): void {
-    const watched = this.sessions.get(sessionId);
+    let watched = this.sessions.get(sessionId);
+    if (!watched) {
+      // sessionId may be the old (pre-remap) ID — find by client reference
+      for (const w of this.sessions.values()) {
+        if (w.clients.has(client)) { watched = w; break; }
+      }
+    }
     if (!watched) return;
 
     watched.clients.delete(client);
     if (watched.clients.size === 0) {
-      this.sessions.delete(sessionId);
+      for (const [key, w] of this.sessions) {
+        if (w === watched) { this.sessions.delete(key); break; }
+      }
     }
   }
 
@@ -256,7 +264,7 @@ export class SessionWatcher {
     try {
       await fh.read(buffer, 0, bytesToRead, watched.byteOffset);
     } finally {
-      await fh.close().catch(() => {});
+      await fh.close().catch((err) => console.warn("SessionWatcher: failed to close file handle:", (err as Error).message));
     }
 
     watched.byteOffset = fileSize;
@@ -286,8 +294,8 @@ export class SessionWatcher {
     if (client.readyState !== 1) return;
     try {
       client.send(JSON.stringify(msg));
-    } catch {
-      // Client in bad state — will be cleaned up on next broadcast
+    } catch (err) {
+      console.warn("SessionWatcher: failed to send to client:", (err as Error).message);
     }
   }
 
@@ -309,7 +317,8 @@ export class SessionWatcher {
       if (client.readyState === 1) {
         try {
           client.send(payload);
-        } catch {
+        } catch (err) {
+          console.warn("SessionWatcher: broadcast send failed, removing client:", (err as Error).message);
           watched.clients.delete(client);
         }
       } else {

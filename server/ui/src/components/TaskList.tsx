@@ -1,4 +1,4 @@
-import type { TaskItem } from "@/pages/ChatPage";
+import type { TaskItem } from "@/types";
 import { cn } from "@/lib/utils";
 
 interface Props {

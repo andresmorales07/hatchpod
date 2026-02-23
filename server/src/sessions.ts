@@ -280,7 +280,11 @@ async function runSession(
       sessions.delete(oldId);
       sessions.set(session.sessionId, session);
       sessionAliases.set(oldId, session.sessionId);
-      watcher?.remap(oldId, session.sessionId);
+      if (!watcher) {
+        console.error(`Session remap: watcher not initialized, clients will not receive updates`);
+      } else {
+        watcher.remap(oldId, session.sessionId);
+      }
       broadcastToSession(session.sessionId, {
         type: "session_redirected",
         newSessionId: session.sessionId,
@@ -317,7 +321,7 @@ async function runSession(
 // ── Session actions ──
 
 export function interruptSession(id: string): boolean {
-  const session = sessions.get(id);
+  const session = getActiveSession(id);
   if (!session) return false;
   session.status = "interrupted";
   session.abortController.abort();
