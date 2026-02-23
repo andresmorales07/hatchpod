@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo, useLayoutEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useMessagesStore } from "@/stores/messages";
 import { useSessionsStore } from "@/stores/sessions";
@@ -9,7 +9,7 @@ import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Composer } from "@/components/Composer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, ArrowLeft, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TaskList } from "@/components/TaskList";
 import type { ToolResultPart, TaskItem, TaskStatus } from "@/types";
@@ -25,6 +25,7 @@ const statusStyles: Record<string, string> = {
 };
 
 const SCROLL_THRESHOLD = 100;
+const SCROLL_UP_TRIGGER = 200;
 
 const VALID_TASK_STATUSES = new Set<TaskStatus>(["pending", "in_progress", "completed", "deleted"]);
 
@@ -58,6 +59,7 @@ export function ChatPage() {
   const {
     messages, slashCommands, status, source, connected, pendingApproval, lastError,
     thinkingText, thinkingStartTime, thinkingDurations,
+    hasOlderMessages, loadingOlderMessages, loadOlderMessages, serverTasks,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
@@ -73,6 +75,9 @@ export function ChatPage() {
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Track previous message count for scroll preservation on prepend
+  const prevMessagesLenRef = useRef(0);
+  const prevScrollHeightRef = useRef(0);
 
   const toolResults = useMemo(() => {
     const map = new Map<string, ToolResultPart>();
@@ -88,24 +93,27 @@ export function ChatPage() {
     return map;
   }, [messages]);
 
+  // Extract tasks from live messages (those after initial replay) and merge with server tasks
   const tasks = useMemo(() => {
+    // Start with a map from server-provided tasks
     const taskMap = new Map<string, TaskItem>();
-    // Track toolUseId → pending task for TaskCreate calls awaiting their result
-    const pendingCreates = new Map<string, TaskItem>();
+    for (const t of serverTasks) {
+      taskMap.set(t.id, { ...t });
+    }
 
+    // Layer on tasks from live messages (client-side extraction for messages after replay)
+    const pendingCreates = new Map<string, TaskItem>();
     for (const msg of messages) {
       if (msg.role === "system") continue;
       for (const part of msg.parts) {
         if (part.type === "tool_use" && part.toolName === "TaskCreate") {
           const { subject, activeForm } = parseTaskCreate(part.input);
-          // Temporarily keyed by toolUseId until we get the real task ID from the result
           const item: TaskItem = { id: part.toolUseId, subject, activeForm, status: "pending" };
           pendingCreates.set(part.toolUseId, item);
         }
         if (part.type === "tool_result") {
           const pending = pendingCreates.get(part.toolUseId);
           if (pending) {
-            // Parse "Task #N created successfully" from result output
             const match = part.output.match(/Task #(\d+)/);
             const taskId = match ? match[1] : part.toolUseId;
             pending.id = taskId;
@@ -124,12 +132,11 @@ export function ChatPage() {
         }
       }
     }
-    // Include any creates that haven't gotten a result yet
     for (const item of pendingCreates.values()) {
       taskMap.set(item.id, item);
     }
     return Array.from(taskMap.values()).filter((t) => t.status !== "deleted");
-  }, [messages]);
+  }, [messages, serverTasks]);
 
   useEffect(() => {
     if (!id) return;
@@ -146,11 +153,44 @@ export function ChatPage() {
     if (isAtBottom) scrollToBottom();
   }, [messages, thinkingText, isAtBottom, scrollToBottom]);
 
+  // Save scrollHeight before DOM updates (for scroll preservation on prepend)
+  useLayoutEffect(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      prevScrollHeightRef.current = el.scrollHeight;
+    }
+  });
+
+  // Restore scroll position after messages are prepended
+  useLayoutEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const prevLen = prevMessagesLenRef.current;
+    const currentLen = messages.length;
+
+    // Detect prepend: messages grew and the first message changed
+    if (currentLen > prevLen && prevLen > 0 && !isAtBottom) {
+      const heightDiff = el.scrollHeight - prevScrollHeightRef.current;
+      if (heightDiff > 0) {
+        el.scrollTop += heightDiff;
+      }
+    }
+
+    prevMessagesLenRef.current = currentLen;
+  }, [messages, isAtBottom]);
+
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    setIsAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD);
-  }, []);
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD;
+    setIsAtBottom(atBottom);
+
+    // Scroll-up pagination trigger
+    if (el.scrollTop < SCROLL_UP_TRIGGER && hasOlderMessages && !loadingOlderMessages) {
+      loadOlderMessages();
+    }
+  }, [hasOlderMessages, loadingOlderMessages, loadOlderMessages]);
 
   const isThinkingActive = thinkingText.length > 0 && thinkingStartTime != null;
   const isRunning = status === "running" || status === "starting";
@@ -182,8 +222,19 @@ export function ChatPage() {
       <div className="flex-1 min-h-0 overflow-hidden relative">
         <div ref={scrollContainerRef} onScroll={handleScroll} className="h-full overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 py-4 flex flex-col gap-4">
-            {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} thinkingDurationMs={thinkingDurations[i] ?? (msg.role === "assistant" ? msg.thinkingDurationMs : null) ?? null} toolResults={toolResults} />
+            {/* Loading indicator for older messages */}
+            {loadingOlderMessages && (
+              <div className="flex justify-center py-2">
+                <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {messages.map((msg) => (
+              <MessageBubble
+                key={`${msg.role}-${msg.index}`}
+                message={msg}
+                thinkingDurationMs={thinkingDurations[msg.index] ?? (msg.role === "assistant" ? msg.thinkingDurationMs : null) ?? null}
+                toolResults={toolResults}
+              />
             ))}
             <div ref={messagesEndRef} />
           </div>

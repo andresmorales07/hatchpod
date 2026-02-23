@@ -42,13 +42,16 @@ export function handleWsConnection(ws, sessionId, ip) {
             return;
         }
         // Auth succeeded — set up the session connection
-        setupSessionConnection(ws, sessionId);
+        const messageLimit = typeof parsed.messageLimit === "number" && parsed.messageLimit > 0
+            ? parsed.messageLimit
+            : undefined;
+        setupSessionConnection(ws, sessionId, messageLimit);
     });
     // Clean up auth timeout on early close
     ws.on("close", () => clearTimeout(authTimeout));
     ws.on("error", () => clearTimeout(authTimeout));
 }
-function setupSessionConnection(ws, sessionId) {
+function setupSessionConnection(ws, sessionId, messageLimit) {
     const watcher = getWatcher();
     const activeSession = getActiveSession(sessionId);
     // For new API sessions, the SDK doesn't yield the initial user prompt as a
@@ -65,11 +68,11 @@ function setupSessionConnection(ws, sessionId) {
     }
     // Subscribe to watcher for message replay + live streaming.
     // This works for BOTH API sessions and CLI sessions.
-    watcher.subscribe(sessionId, ws).catch((err) => {
+    watcher.subscribe(sessionId, ws, messageLimit).catch((err) => {
         console.error(`SessionWatcher subscribe failed for ${sessionId}:`, err);
         if (ws.readyState === 1) {
             ws.send(JSON.stringify({ type: "error", message: "failed to load message history" }));
-            ws.send(JSON.stringify({ type: "replay_complete" }));
+            ws.send(JSON.stringify({ type: "replay_complete", totalMessages: 0, oldestIndex: 0 }));
         }
     });
     // Send source and status info

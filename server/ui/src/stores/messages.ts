@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useAuthStore } from "./auth";
 import { useSessionsStore } from "./sessions";
-import type { NormalizedMessage, SlashCommand } from "../types";
+import type { NormalizedMessage, SlashCommand, TaskItem } from "../types";
 
 type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
@@ -10,7 +10,8 @@ type ServerMessage =
   | { type: "session_redirected"; newSessionId: string }
   | { type: "slash_commands"; commands: SlashCommand[] }
   | { type: "thinking_delta"; text: string }
-  | { type: "replay_complete" }
+  | { type: "replay_complete"; totalMessages?: number; oldestIndex?: number }
+  | { type: "tasks"; tasks: Array<{ id: string; subject: string; activeForm?: string; status: string }> }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
@@ -32,6 +33,15 @@ interface MessagesState {
   thinkingDurations: Record<number, number>;
   lastError: string | null;
 
+  // Pagination state
+  hasOlderMessages: boolean;
+  loadingOlderMessages: boolean;
+  oldestLoadedIndex: number;
+  totalMessageCount: number;
+
+  // Server-extracted tasks (from full message scan)
+  serverTasks: TaskItem[];
+
   connect: (sessionId: string) => void;
   disconnect: () => void;
   sendPrompt: (text: string) => boolean;
@@ -39,16 +49,17 @@ interface MessagesState {
   approveAlways: (toolUseId: string) => void;
   deny: (toolUseId: string, message?: string) => void;
   interrupt: () => void;
+  loadOlderMessages: () => void;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const BASE_RECONNECT_MS = 1000;
+const MESSAGE_LIMIT = 50;
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
 let thinkingStart: number | null = null;
-let messageCount = 0;
 let currentSessionId: string | null = null;
 // Explicit flag to prevent connect() from wiping pre-seeded history messages
 let _resuming = false;
@@ -76,6 +87,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   thinkingStartTime: null,
   thinkingDurations: {},
   lastError: null,
+  hasOlderMessages: false,
+  loadingOlderMessages: false,
+  oldestLoadedIndex: 0,
+  totalMessageCount: 0,
+  serverTasks: [],
 
   connect: (sessionId: string) => {
     // After a session redirect, the WebSocket is already connected to the
@@ -94,7 +110,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     currentSessionId = sessionId;
 
     if (!shouldPreserve) {
-      messageCount = 0;
       thinkingStart = null;
       set({
         messages: [],
@@ -107,6 +122,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         thinkingStartTime: null,
         thinkingDurations: {},
         lastError: null,
+        hasOlderMessages: false,
+        loadingOlderMessages: false,
+        oldestLoadedIndex: 0,
+        totalMessageCount: 0,
+        serverTasks: [],
       });
     }
 
@@ -117,7 +137,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
       socket.onopen = () => {
         const { token } = useAuthStore.getState();
-        socket.send(JSON.stringify({ type: "auth", token }));
+        socket.send(JSON.stringify({ type: "auth", token, messageLimit: MESSAGE_LIMIT }));
         set({ connected: true, lastError: null });
         reconnectAttempts = 0;
       };
@@ -132,17 +152,31 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         switch (msg.type) {
           case "message": {
             const m = msg.message;
-            const msgIdx = messageCount;
-            messageCount++;
             if (m.role === "assistant" && m.parts.some((p) => p.type === "reasoning")) {
               if (thinkingStart != null) {
                 const duration = Date.now() - thinkingStart;
-                set((s) => ({ thinkingDurations: { ...s.thinkingDurations, [msgIdx]: duration } }));
+                set((s) => ({ thinkingDurations: { ...s.thinkingDurations, [m.index]: duration } }));
               }
               thinkingStart = null;
               set({ thinkingText: "", thinkingStartTime: null });
             }
             set((s) => ({ messages: [...s.messages, m] }));
+            break;
+          }
+          case "replay_complete": {
+            const totalMessages = msg.totalMessages ?? 0;
+            const oldestIndex = msg.oldestIndex ?? 0;
+            set({
+              totalMessageCount: totalMessages,
+              oldestLoadedIndex: oldestIndex,
+              hasOlderMessages: oldestIndex > 0,
+            });
+            break;
+          }
+          case "tasks": {
+            if (Array.isArray(msg.tasks)) {
+              set({ serverTasks: msg.tasks as TaskItem[] });
+            }
             break;
           }
           case "status":
@@ -232,6 +266,47 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     ws = null;
   },
 
+  loadOlderMessages: () => {
+    const state = get();
+    if (state.loadingOlderMessages || !state.hasOlderMessages || !currentSessionId) return;
+
+    set({ loadingOlderMessages: true });
+    const { token } = useAuthStore.getState();
+    const sessionId = currentSessionId;
+
+    fetch(`/api/sessions/${sessionId}/messages?before=${state.oldestLoadedIndex}&limit=30`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (currentSessionId !== sessionId) return; // User navigated away
+        if (res.status === 401) { useAuthStore.getState().logout(); return; }
+        if (!res.ok) {
+          set({ loadingOlderMessages: false });
+          return;
+        }
+        const data = await res.json();
+        const olderMessages: NormalizedMessage[] = data.messages ?? [];
+        const hasMore: boolean = data.hasMore ?? false;
+        const oldestIndex: number = data.oldestIndex ?? 0;
+
+        // Update server tasks if returned
+        if (Array.isArray(data.tasks) && data.tasks.length > 0) {
+          set({ serverTasks: data.tasks as TaskItem[] });
+        }
+
+        set((s) => ({
+          messages: [...olderMessages, ...s.messages],
+          hasOlderMessages: hasMore,
+          oldestLoadedIndex: oldestIndex,
+          loadingOlderMessages: false,
+        }));
+      })
+      .catch((err) => {
+        console.error("Failed to load older messages:", err);
+        set({ loadingOlderMessages: false });
+      });
+  },
+
   sendPrompt: (text) => {
     const state = get();
     // CLI/history sessions — resume via REST then reconnect WS
@@ -277,7 +352,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             sessStore.setActiveSession(session.id);
             sessStore.fetchSessions();
             // Pre-seed with history messages, then connect WS for new messages
-            messageCount = historyMessages.length;
             _resuming = true;
             set({ messages: historyMessages, status: "starting" });
             currentSessionId = session.id;

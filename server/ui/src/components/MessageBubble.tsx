@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { NormalizedMessage, MessagePart, TextPart, ToolResultPart } from "../types";
-import { ThinkingBlock } from "./ThinkingBlock";
+
 import { Markdown } from "./Markdown";
 import { cn } from "@/lib/utils";
 import { getToolSummary } from "@/lib/tools";
@@ -9,7 +9,7 @@ import { ChevronDown, Wrench, AlertCircle, Bot } from "lucide-react";
 
 interface Props {
   message: NormalizedMessage;
-  thinkingDurationMs: number | null;
+  thinkingDurationMs?: number | null;
   toolResults: Map<string, ToolResultPart>;
 }
 
@@ -93,7 +93,6 @@ function ToolCard({
 function renderPart(
   part: MessagePart,
   i: number,
-  thinkingDurationMs: number | null,
   toolResults: Map<string, ToolResultPart>,
 ) {
   switch (part.type) {
@@ -131,7 +130,7 @@ function renderPart(
       // Rendered by the paired ToolCard above — skip standalone rendering
       return null;
     case "reasoning":
-      return <ThinkingBlock key={i} text={part.text} durationMs={thinkingDurationMs} />;
+      return null;
     case "error":
       return (
         <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
@@ -144,7 +143,7 @@ function renderPart(
   }
 }
 
-export function MessageBubble({ message, thinkingDurationMs, toolResults }: Props) {
+export function MessageBubble({ message, toolResults }: Props) {
   // Hide user messages that only contain tool_result parts (shown inside ToolCard)
   if (message.role === "user") {
     const hasOnlyToolResults = message.parts.every((p) => p.type === "tool_result");
@@ -182,7 +181,7 @@ export function MessageBubble({ message, thinkingDurationMs, toolResults }: Prop
   if (message.role === "assistant") {
     return (
       <div className="flex flex-col gap-2 max-w-[85%] md:max-w-[70%]">
-        {message.parts.map((part, i) => renderPart(part, i, thinkingDurationMs, toolResults))}
+        {message.parts.map((part, i) => renderPart(part, i, toolResults))}
       </div>
     );
   }

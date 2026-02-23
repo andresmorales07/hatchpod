@@ -19,7 +19,7 @@ export declare class SessionWatcher {
      * Subscribe a WebSocket client to a session.
      * Replays existing messages from the JSONL file, then streams new ones.
      */
-    subscribe(sessionId: string, client: WebSocket): Promise<void>;
+    subscribe(sessionId: string, client: WebSocket, messageLimit?: number): Promise<void>;
     /**
      * Unsubscribe a client from a session.
      * Removes the session watch entirely if no clients remain.

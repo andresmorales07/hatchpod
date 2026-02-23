@@ -1,11 +1,13 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
 import { listSessionsWithHistory, getActiveSession, getSessionCount, createSession, deleteSession, } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
+import { extractTasks } from "./task-extractor.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 const SESSION_HISTORY_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/history$/;
+const SESSION_MESSAGES_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/messages$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
 const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
@@ -187,6 +189,67 @@ export async function handleRequest(req, res) {
             console.error(`Failed to get session history for ${sessionId}:`, err);
             json(res, 500, { error: "internal server error" });
         }
+        return;
+    }
+    // GET /api/sessions/:id/messages — paginated messages for scroll-up loading
+    const messagesMatch = pathname.match(SESSION_MESSAGES_RE);
+    if (messagesMatch && method === "GET") {
+        const sessionId = messagesMatch[1];
+        if (!UUID_RE.test(sessionId)) {
+            json(res, 400, { error: "invalid session ID" });
+            return;
+        }
+        const provider = url.searchParams.get("provider") ?? "claude";
+        let adapter;
+        try {
+            adapter = getProvider(provider);
+        }
+        catch {
+            json(res, 400, { error: "unknown provider" });
+            return;
+        }
+        const filePath = await adapter.getSessionFilePath(sessionId);
+        if (!filePath) {
+            json(res, 404, { error: "session not found" });
+            return;
+        }
+        let content;
+        try {
+            content = await readFile(filePath, "utf-8");
+        }
+        catch (err) {
+            if (err.code === "ENOENT") {
+                json(res, 404, { error: "session not found" });
+                return;
+            }
+            console.error(`Failed to read session file for ${sessionId}:`, err);
+            json(res, 500, { error: "internal server error" });
+            return;
+        }
+        // Normalize all lines
+        const allMessages = [];
+        let idx = 0;
+        for (const line of content.split("\n")) {
+            if (!line.trim())
+                continue;
+            const normalized = adapter.normalizeFileLine(line, idx);
+            if (normalized) {
+                allMessages.push(normalized);
+                idx++;
+            }
+        }
+        const beforeParam = url.searchParams.get("before");
+        const limitParam = url.searchParams.get("limit");
+        const before = beforeParam != null ? parseInt(beforeParam, 10) : allMessages.length;
+        const limit = Math.min(Math.max(parseInt(limitParam ?? "30", 10) || 30, 1), 100);
+        // Slice: messages with index < before, take the last `limit`
+        const eligible = allMessages.filter((m) => m.index < before);
+        const page = eligible.slice(-limit);
+        const oldestIndex = page.length > 0 ? page[0].index : 0;
+        const hasMore = eligible.length > page.length;
+        // Also extract tasks from full message set
+        const tasks = extractTasks(allMessages);
+        json(res, 200, { messages: page, hasMore, oldestIndex, tasks });
         return;
     }
     // GET /api/sessions/:id — session details (API sessions only)

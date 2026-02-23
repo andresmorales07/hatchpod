@@ -80,6 +80,16 @@ export type ServerMessage = {
     text: string;
 } | {
     type: "replay_complete";
+    totalMessages?: number;
+    oldestIndex?: number;
+} | {
+    type: "tasks";
+    tasks: Array<{
+        id: string;
+        subject: string;
+        activeForm?: string;
+        status: string;
+    }>;
 } | {
     type: "ping";
 } | {

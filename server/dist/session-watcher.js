@@ -1,4 +1,5 @@
 import { open, stat, readFile } from "node:fs/promises";
+import { extractTasks } from "./task-extractor.js";
 /**
  * Tails JSONL session files on disk and broadcasts normalized messages
  * to subscribed WebSocket clients. A single polling interval checks all
@@ -21,7 +22,7 @@ export class SessionWatcher {
      * Subscribe a WebSocket client to a session.
      * Replays existing messages from the JSONL file, then streams new ones.
      */
-    async subscribe(sessionId, client) {
+    async subscribe(sessionId, client, messageLimit) {
         let watched = this.sessions.get(sessionId);
         if (watched) {
             // Session already being watched — add client and replay from file
@@ -34,7 +35,7 @@ export class SessionWatcher {
                     watched.filePath = filePath;
                 }
             }
-            await this.replayToClient(watched, client);
+            await this.replayToClient(watched, client, messageLimit);
             return;
         }
         // Create the entry IMMEDIATELY (before any await) to prevent race
@@ -53,12 +54,12 @@ export class SessionWatcher {
         // Resolve file path via adapter (async)
         const filePath = await this.adapter.getSessionFilePath(sessionId);
         if (!filePath) {
-            this.send(client, { type: "replay_complete" });
+            this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
             return;
         }
         // Got a file path — update the entry and replay existing content
         watched.filePath = filePath;
-        await this.replayToClient(watched, client);
+        await this.replayToClient(watched, client, messageLimit);
     }
     /**
      * Unsubscribe a client from a session.
@@ -185,10 +186,10 @@ export class SessionWatcher {
      * For subsequent subscribers, we re-read from byte 0 up to the current offset
      * so they get a full replay without interfering with the shared state.
      */
-    async replayToClient(watched, client) {
+    async replayToClient(watched, client, messageLimit) {
         // No file to replay (e.g., test adapter) — just signal replay is done
         if (!watched.filePath) {
-            this.send(client, { type: "replay_complete" });
+            this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
             return;
         }
         let content;
@@ -198,30 +199,40 @@ export class SessionWatcher {
         catch (err) {
             if (err.code === "ENOENT") {
                 // File doesn't exist yet — send replay_complete, leave byteOffset at 0
-                this.send(client, { type: "replay_complete" });
+                this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
                 return;
             }
             // Non-ENOENT error — send error + replay_complete so the client doesn't hang
             this.send(client, { type: "error", message: "failed to load message history" });
-            this.send(client, { type: "replay_complete" });
+            this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
             throw err;
         }
         const contentBytes = Buffer.byteLength(content, "utf-8");
         const lines = content.split("\n");
-        // Track a local index for this replay. We need to replay all messages
-        // from index 0 to the client, but we must also ensure the shared
-        // messageIndex is at least as high as the count of normalized messages.
+        // 1. Normalize ALL lines to get the full message list
+        const allMessages = [];
         let replayIndex = 0;
         for (const line of lines) {
             if (!line.trim())
                 continue;
             const normalized = this.adapter.normalizeFileLine(line, replayIndex);
             if (normalized) {
-                this.send(client, { type: "message", message: normalized });
+                allMessages.push(normalized);
                 replayIndex++;
             }
         }
-        // Update shared state to the furthest point we've read.
+        // 2. Extract task state from the full message set
+        const tasks = extractTasks(allMessages);
+        // 3. Determine which messages to send
+        const totalMessages = allMessages.length;
+        const toSend = messageLimit && messageLimit < totalMessages
+            ? allMessages.slice(-messageLimit)
+            : allMessages;
+        // 4. Send only the selected messages to the client
+        for (const msg of toSend) {
+            this.send(client, { type: "message", message: msg });
+        }
+        // 5. Update shared state to the furthest point we've read.
         // Only advance — never go backwards (another subscriber may have
         // already advanced it further via a concurrent replay).
         if (contentBytes > watched.byteOffset) {
@@ -234,18 +245,17 @@ export class SessionWatcher {
         // Only set lineBuffer for the first subscriber (when it was empty)
         const lastSegment = lines[lines.length - 1];
         if (lastSegment && lastSegment.trim() && !content.endsWith("\n")) {
-            // There's an incomplete line at the end
             if (!watched.lineBuffer) {
                 watched.lineBuffer = lastSegment;
-                // Re-adjust: the incomplete line's bytes shouldn't be counted
-                // as "consumed" — we'll re-read them on the next poll.
-                // Actually, since byteOffset points to end of file, and the
-                // partial line is already buffered, we leave byteOffset as-is
-                // because the next poll uses stat().size > byteOffset to detect
-                // new data beyond what we've already read.
             }
         }
-        this.send(client, { type: "replay_complete" });
+        // 6. Send tasks if any non-completed tasks exist
+        if (tasks.length > 0 && tasks.some((t) => t.status !== "completed")) {
+            this.send(client, { type: "tasks", tasks });
+        }
+        // 7. Send replay_complete with pagination metadata
+        const oldestIndex = toSend.length > 0 ? toSend[0].index : 0;
+        this.send(client, { type: "replay_complete", totalMessages, oldestIndex });
     }
     /** Single poll cycle: check all watched sessions for new data. */
     async poll() {

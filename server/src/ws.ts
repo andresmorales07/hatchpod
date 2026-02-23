@@ -25,7 +25,7 @@ export function handleWsConnection(ws: WebSocket, sessionId: string, ip: string)
   ws.once("message", (data: Buffer | string) => {
     clearTimeout(authTimeout);
 
-    let parsed: { type: string; token?: string };
+    let parsed: { type: string; token?: string; messageLimit?: number };
     try {
       parsed = JSON.parse(typeof data === "string" ? data : data.toString());
     } catch (err) {
@@ -53,7 +53,10 @@ export function handleWsConnection(ws: WebSocket, sessionId: string, ip: string)
     }
 
     // Auth succeeded — set up the session connection
-    setupSessionConnection(ws, sessionId);
+    const messageLimit = typeof parsed.messageLimit === "number" && parsed.messageLimit > 0
+      ? parsed.messageLimit
+      : undefined;
+    setupSessionConnection(ws, sessionId, messageLimit);
   });
 
   // Clean up auth timeout on early close
@@ -61,7 +64,7 @@ export function handleWsConnection(ws: WebSocket, sessionId: string, ip: string)
   ws.on("error", () => clearTimeout(authTimeout));
 }
 
-function setupSessionConnection(ws: WebSocket, sessionId: string): void {
+function setupSessionConnection(ws: WebSocket, sessionId: string, messageLimit?: number): void {
   const watcher = getWatcher();
   const activeSession = getActiveSession(sessionId);
 
@@ -80,11 +83,11 @@ function setupSessionConnection(ws: WebSocket, sessionId: string): void {
 
   // Subscribe to watcher for message replay + live streaming.
   // This works for BOTH API sessions and CLI sessions.
-  watcher.subscribe(sessionId, ws).catch((err) => {
+  watcher.subscribe(sessionId, ws, messageLimit).catch((err) => {
     console.error(`SessionWatcher subscribe failed for ${sessionId}:`, err);
     if (ws.readyState === 1) {
       ws.send(JSON.stringify({ type: "error", message: "failed to load message history" } satisfies ServerMessage));
-      ws.send(JSON.stringify({ type: "replay_complete" } satisfies ServerMessage));
+      ws.send(JSON.stringify({ type: "replay_complete", totalMessages: 0, oldestIndex: 0 } satisfies ServerMessage));
     }
   });
 
