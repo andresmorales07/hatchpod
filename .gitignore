@@ -19,7 +19,6 @@ docs/plans/
 
 # API server UI
 server/ui/node_modules/
-server/public/
 
 # Worktrees
 .worktrees/

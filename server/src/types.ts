@@ -55,6 +55,7 @@ export type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
   | { type: "tool_approval_request"; toolName: string; toolUseId: string; input: unknown }
   | { type: "status"; status: SessionStatus; error?: string; source?: "api" | "cli" }
+  | { type: "session_redirected"; newSessionId: string }
   | { type: "slash_commands"; commands: SlashCommand[] }
   | { type: "thinking_delta"; text: string }
   | { type: "replay_complete" }

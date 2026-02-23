@@ -127,8 +127,14 @@ function normalizeMessage(msg, index, accumulatedThinking = "") {
     switch (msg.type) {
         case "assistant":
             return normalizeAssistant(msg, index, accumulatedThinking);
-        case "user":
-            return normalizeUser(msg, index);
+        case "user": {
+            // Skip system-injected user messages (skill content, system context, etc.)
+            const userMsg = msg;
+            if (userMsg.isMeta || userMsg.isSynthetic) {
+                return null;
+            }
+            return normalizeUser(userMsg, index);
+        }
         case "result":
             return normalizeResult(msg, index);
         default:
@@ -181,7 +187,7 @@ export class ClaudeAdapter {
                             if (decision.allow) {
                                 return {
                                     behavior: "allow",
-                                    ...(decision.updatedInput ? { updatedInput: decision.updatedInput } : {}),
+                                    updatedInput: decision.updatedInput ?? input,
                                     ...(decision.alwaysAllow && opts.suggestions
                                         ? { updatedPermissions: opts.suggestions }
                                         : {}),
@@ -296,6 +302,12 @@ export class ClaudeAdapter {
                         prevTimestampMs = lineTs;
                     continue;
                 }
+                // Skip system-injected user messages (skill content, system context, etc.)
+                if (parsed.isMeta || parsed.isSynthetic) {
+                    if (!Number.isNaN(lineTs))
+                        prevTimestampMs = lineTs;
+                    continue;
+                }
                 const msg = parsed.message;
                 if (!msg)
                     continue;
@@ -349,6 +361,9 @@ export class ClaudeAdapter {
         }
         const type = parsed.type;
         if (type !== "user" && type !== "assistant")
+            return null;
+        // Skip system-injected user messages (skill content, system context, etc.)
+        if (parsed.isMeta || parsed.isSynthetic)
             return null;
         const msg = parsed.message;
         if (!msg)

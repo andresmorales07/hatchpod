@@ -67,6 +67,9 @@ export type ServerMessage = {
     error?: string;
     source?: "api" | "cli";
 } | {
+    type: "session_redirected";
+    newSessionId: string;
+} | {
     type: "slash_commands";
     commands: SlashCommand[];
 } | {

@@ -172,8 +172,14 @@ function normalizeMessage(msg: SDKMessage, index: number, accumulatedThinking = 
   switch (msg.type) {
     case "assistant":
       return normalizeAssistant(msg as SDKAssistantMessage, index, accumulatedThinking);
-    case "user":
-      return normalizeUser(msg as SDKUserMessage | SDKUserMessageReplay, index);
+    case "user": {
+      // Skip system-injected user messages (skill content, system context, etc.)
+      const userMsg = msg as SDKUserMessage | SDKUserMessageReplay;
+      if ((userMsg as Record<string, unknown>).isMeta || (userMsg as Record<string, unknown>).isSynthetic) {
+        return null;
+      }
+      return normalizeUser(userMsg, index);
+    }
     case "result":
       return normalizeResult(msg as SDKResultMessage, index);
     default:
@@ -241,7 +247,7 @@ export class ClaudeAdapter implements ProviderAdapter {
                   if (decision.allow) {
                     return {
                       behavior: "allow" as const,
-                      ...(decision.updatedInput ? { updatedInput: decision.updatedInput } : {}),
+                      updatedInput: decision.updatedInput ?? input,
                       ...(decision.alwaysAllow && opts.suggestions
                         ? { updatedPermissions: opts.suggestions }
                         : {}),
@@ -373,6 +379,12 @@ export class ClaudeAdapter implements ProviderAdapter {
           continue;
         }
 
+        // Skip system-injected user messages (skill content, system context, etc.)
+        if (parsed.isMeta || parsed.isSynthetic) {
+          if (!Number.isNaN(lineTs)) prevTimestampMs = lineTs;
+          continue;
+        }
+
         const msg = parsed.message as Record<string, unknown> | undefined;
         if (!msg) continue;
 
@@ -438,6 +450,9 @@ export class ClaudeAdapter implements ProviderAdapter {
 
     const type = parsed.type;
     if (type !== "user" && type !== "assistant") return null;
+
+    // Skip system-injected user messages (skill content, system context, etc.)
+    if (parsed.isMeta || parsed.isSynthetic) return null;
 
     const msg = parsed.message as Record<string, unknown> | undefined;
     if (!msg) return null;

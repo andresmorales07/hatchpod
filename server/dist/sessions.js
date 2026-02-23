@@ -3,6 +3,9 @@ import { SessionWatcher } from "./session-watcher.js";
 import { randomUUID } from "node:crypto";
 // ── ActiveSession map (runtime handles for API-driven sessions) ──
 const sessions = new Map();
+// Maps old (temp) session IDs to their remapped (provider) session IDs.
+// Allows WebSocket handlers that captured the old ID to still find the session.
+const sessionAliases = new Map();
 const MAX_SESSIONS = 50;
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -14,6 +17,11 @@ setInterval(() => {
             now - s.createdAt.getTime() > SESSION_TTL_MS) {
             sessions.delete(id);
         }
+    }
+    // Clean up stale aliases whose targets no longer exist
+    for (const [alias, target] of sessionAliases) {
+        if (!sessions.has(target))
+            sessionAliases.delete(alias);
     }
 }, CLEANUP_INTERVAL_MS).unref();
 // ── SessionWatcher singleton ──
@@ -105,7 +113,7 @@ export async function listSessionsWithHistory(cwd) {
 }
 // ── Session CRUD ──
 export function getActiveSession(id) {
-    return sessions.get(id);
+    return sessions.get(id) ?? sessions.get(sessionAliases.get(id) ?? "");
 }
 export function getSessionCount() {
     let active = 0;
@@ -220,13 +228,24 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
         }
         const sessionResult = result.value;
         // Capture the CLI session ID from the provider result.
-        // If it differs from our temp UUID, remap the session in the map.
+        // If it differs from our temp UUID, remap the session in the map
+        // and notify connected WebSocket clients of the new session ID.
         if (sessionResult.providerSessionId && sessionResult.providerSessionId !== session.sessionId) {
             const oldId = session.sessionId;
             session.sessionId = sessionResult.providerSessionId;
             sessions.delete(oldId);
             sessions.set(session.sessionId, session);
-            watcher?.remap(oldId, session.sessionId);
+            sessionAliases.set(oldId, session.sessionId);
+            if (!watcher) {
+                console.error(`Session remap: watcher not initialized, clients will not receive updates`);
+            }
+            else {
+                watcher.remap(oldId, session.sessionId);
+            }
+            broadcastToSession(session.sessionId, {
+                type: "session_redirected",
+                newSessionId: session.sessionId,
+            });
         }
         // Status may have been mutated externally by interruptSession()
         const currentStatus = session.status;
@@ -257,7 +276,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
 }
 // ── Session actions ──
 export function interruptSession(id) {
-    const session = sessions.get(id);
+    const session = getActiveSession(id);
     if (!session)
         return false;
     session.status = "interrupted";
@@ -270,13 +289,19 @@ export function clearSessions() {
         s.abortController.abort();
     }
     sessions.clear();
+    sessionAliases.clear();
 }
 export function deleteSession(id) {
-    const session = sessions.get(id);
+    const session = getActiveSession(id);
     if (!session)
         return false;
-    interruptSession(id);
-    sessions.delete(id);
+    interruptSession(session.sessionId);
+    sessions.delete(session.sessionId);
+    // Clean up any aliases pointing to this session
+    for (const [alias, target] of sessionAliases) {
+        if (target === session.sessionId)
+            sessionAliases.delete(alias);
+    }
     return true;
 }
 export function handleApproval(session, toolUseId, allow, message, answers, alwaysAllow) {

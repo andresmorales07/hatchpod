@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowDown, ArrowLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ToolResultPart } from "@/types";
+import { TaskList } from "@/components/TaskList";
+import type { ToolResultPart, TaskItem, TaskStatus } from "@/types";
 
 const statusStyles: Record<string, string> = {
   idle: "bg-emerald-500/15 text-emerald-400 border-transparent",
@@ -24,6 +25,31 @@ const statusStyles: Record<string, string> = {
 };
 
 const SCROLL_THRESHOLD = 100;
+
+const VALID_TASK_STATUSES = new Set<TaskStatus>(["pending", "in_progress", "completed", "deleted"]);
+
+function isValidTaskStatus(value: unknown): value is TaskStatus {
+  return typeof value === "string" && VALID_TASK_STATUSES.has(value as TaskStatus);
+}
+
+function parseTaskCreate(input: unknown): { subject: string; activeForm?: string } {
+  if (input == null || typeof input !== "object" || Array.isArray(input)) {
+    return { subject: "Untitled task" };
+  }
+  const rec = input as Record<string, unknown>;
+  return {
+    subject: typeof rec.subject === "string" ? rec.subject : "Untitled task",
+    activeForm: typeof rec.activeForm === "string" ? rec.activeForm : undefined,
+  };
+}
+
+function applyTaskUpdate(existing: TaskItem, input: unknown): void {
+  if (input == null || typeof input !== "object" || Array.isArray(input)) return;
+  const rec = input as Record<string, unknown>;
+  if (isValidTaskStatus(rec.status)) existing.status = rec.status;
+  if (typeof rec.subject === "string") existing.subject = rec.subject;
+  if (typeof rec.activeForm === "string") existing.activeForm = rec.activeForm;
+}
 
 export function ChatPage() {
   const { id } = useParams<{ id: string }>();
@@ -60,6 +86,49 @@ export function ChatPage() {
       }
     }
     return map;
+  }, [messages]);
+
+  const tasks = useMemo(() => {
+    const taskMap = new Map<string, TaskItem>();
+    // Track toolUseId → pending task for TaskCreate calls awaiting their result
+    const pendingCreates = new Map<string, TaskItem>();
+
+    for (const msg of messages) {
+      if (msg.role === "system") continue;
+      for (const part of msg.parts) {
+        if (part.type === "tool_use" && part.toolName === "TaskCreate") {
+          const { subject, activeForm } = parseTaskCreate(part.input);
+          // Temporarily keyed by toolUseId until we get the real task ID from the result
+          const item: TaskItem = { id: part.toolUseId, subject, activeForm, status: "pending" };
+          pendingCreates.set(part.toolUseId, item);
+        }
+        if (part.type === "tool_result") {
+          const pending = pendingCreates.get(part.toolUseId);
+          if (pending) {
+            // Parse "Task #N created successfully" from result output
+            const match = part.output.match(/Task #(\d+)/);
+            const taskId = match ? match[1] : part.toolUseId;
+            pending.id = taskId;
+            taskMap.set(taskId, pending);
+            pendingCreates.delete(part.toolUseId);
+          }
+        }
+        if (part.type === "tool_use" && part.toolName === "TaskUpdate") {
+          const input = part.input;
+          const taskId = input != null && typeof input === "object" && !Array.isArray(input)
+            ? (input as Record<string, unknown>).taskId
+            : undefined;
+          if (typeof taskId === "string" && taskMap.has(taskId)) {
+            applyTaskUpdate(taskMap.get(taskId)!, input);
+          }
+        }
+      }
+    }
+    // Include any creates that haven't gotten a result yet
+    for (const item of pendingCreates.values()) {
+      taskMap.set(item.id, item);
+    }
+    return Array.from(taskMap.values()).filter((t) => t.status !== "deleted");
   }, [messages]);
 
   useEffect(() => {
@@ -116,7 +185,6 @@ export function ChatPage() {
             {messages.map((msg, i) => (
               <MessageBubble key={i} message={msg} thinkingDurationMs={thinkingDurations[i] ?? (msg.role === "assistant" ? msg.thinkingDurationMs : null) ?? null} toolResults={toolResults} />
             ))}
-            {isThinkingActive && <ThinkingIndicator thinkingText={thinkingText} startTime={thinkingStartTime!} />}
             <div ref={messagesEndRef} />
           </div>
         </div>
@@ -157,6 +225,20 @@ export function ChatPage() {
           onApproveAlways={approveAlways}
           onDeny={deny}
         />
+      )}
+
+      {/* Thinking indicator — fixed above composer, not in scroll */}
+      {isThinkingActive && (
+        <div className="max-w-3xl mx-auto px-4 w-full">
+          <ThinkingIndicator thinkingText={thinkingText} startTime={thinkingStartTime!} />
+        </div>
+      )}
+
+      {/* Task list */}
+      {tasks.length > 0 && tasks.some((t) => t.status !== "completed") && (
+        <div className="max-w-3xl mx-auto px-4 w-full">
+          <TaskList tasks={tasks} />
+        </div>
       )}
 
       {/* Composer */}

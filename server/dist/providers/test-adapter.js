@@ -232,6 +232,21 @@ export class TestAdapter {
                 };
                 break;
             }
+            case "remap": {
+                // Yields a message and returns a different providerSessionId,
+                // triggering the session ID remap flow in runSession().
+                checkAbort(abortSignal);
+                yield {
+                    role: "assistant",
+                    parts: [{ type: "text", text: `Echo: ${cleanPrompt}` }],
+                    index: index++,
+                };
+                return {
+                    providerSessionId: randomUUID(),
+                    totalCostUsd: 0.001,
+                    numTurns: 1,
+                };
+            }
             case "thinking": {
                 // Simulate streaming thinking deltas
                 checkAbort(abortSignal);
