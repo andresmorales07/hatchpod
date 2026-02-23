@@ -10,6 +10,10 @@ interface WatchedSession {
   lineBuffer: string;
   messageIndex: number;
   clients: Set<WebSocket>;
+  /** When true, pollSession() skips this session. Used by runSession() to
+   *  prevent the watcher from broadcasting messages that are already being
+   *  delivered directly via broadcastToSession(). */
+  pollingSuppressed: boolean;
 }
 
 /**
@@ -21,6 +25,8 @@ export class SessionWatcher {
   private adapter: ProviderAdapter;
   private sessions = new Map<string, WatchedSession>();
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
+  /** Session IDs whose polling is suppressed (runSession broadcasts directly). */
+  private suppressedIds = new Set<string>();
 
   constructor(adapter: ProviderAdapter) {
     this.adapter = adapter;
@@ -63,6 +69,7 @@ export class SessionWatcher {
       lineBuffer: "",
       messageIndex: 0,
       clients: new Set([client]),
+      pollingSuppressed: this.suppressedIds.has(sessionId),
     };
     this.sessions.set(sessionId, watched);
 
@@ -109,6 +116,66 @@ export class SessionWatcher {
     if (!watched) return;
     this.sessions.delete(oldId);
     this.sessions.set(newId, watched);
+  }
+
+  /**
+   * Suppress file-based polling for a session. Used by runSession() to
+   * prevent the watcher from delivering messages that are already being
+   * broadcast directly. The session entry is created if it doesn't exist.
+   */
+  suppressPolling(sessionId: string): void {
+    const watched = this.sessions.get(sessionId);
+    if (watched) {
+      watched.pollingSuppressed = true;
+    }
+    // If no entry yet, it'll be created when subscribe() is called —
+    // we store the flag for later in case subscribe comes after this call.
+    this.suppressedIds.add(sessionId);
+  }
+
+  /**
+   * Re-enable file-based polling for a session.
+   */
+  unsuppressPolling(sessionId: string): void {
+    this.suppressedIds.delete(sessionId);
+    const watched = this.sessions.get(sessionId);
+    if (watched) {
+      watched.pollingSuppressed = false;
+    }
+  }
+
+  /**
+   * Advance a session's byteOffset to the current file size so the next
+   * poll doesn't replay already-delivered messages. Called after runSession()
+   * completes and the session is remapped to its provider ID.
+   */
+  async syncOffsetToEnd(sessionId: string): Promise<void> {
+    const watched = this.sessions.get(sessionId);
+    if (!watched) return;
+
+    // Resolve file path if needed
+    if (!watched.filePath) {
+      const filePath = await this.adapter.getSessionFilePath(sessionId);
+      if (filePath) watched.filePath = filePath;
+    }
+    if (!watched.filePath) return;
+
+    try {
+      // Read the full file to count normalized messages (for correct messageIndex)
+      // and advance byteOffset to EOF so future polls only see new data.
+      const content = await readFile(watched.filePath, "utf-8");
+      watched.byteOffset = Buffer.byteLength(content, "utf-8");
+      watched.lineBuffer = "";
+
+      let idx = 0;
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
+        if (this.adapter.normalizeFileLine(line, idx)) idx++;
+      }
+      if (idx > watched.messageIndex) watched.messageIndex = idx;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
   }
 
   /** Start the global poll loop. Call once at server startup. */
@@ -229,6 +296,9 @@ export class SessionWatcher {
 
   /** Poll a single session for new data. */
   private async pollSession(sessionId: string, watched: WatchedSession): Promise<void> {
+    // Skip polling for sessions where runSession() broadcasts directly.
+    if (watched.pollingSuppressed) return;
+
     if (!watched.filePath) {
       // File path wasn't available at subscribe time (e.g., session created
       // via API with a temp UUID, then remapped to the CLI session ID).

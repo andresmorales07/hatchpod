@@ -10,6 +10,8 @@ export declare class SessionWatcher {
     private adapter;
     private sessions;
     private intervalHandle;
+    /** Session IDs whose polling is suppressed (runSession broadcasts directly). */
+    private suppressedIds;
     constructor(adapter: ProviderAdapter);
     /** Number of sessions currently being watched. */
     get watchedCount(): number;
@@ -28,6 +30,22 @@ export declare class SessionWatcher {
      * so broadcasts under the new ID reach existing clients.
      */
     remap(oldId: string, newId: string): void;
+    /**
+     * Suppress file-based polling for a session. Used by runSession() to
+     * prevent the watcher from delivering messages that are already being
+     * broadcast directly. The session entry is created if it doesn't exist.
+     */
+    suppressPolling(sessionId: string): void;
+    /**
+     * Re-enable file-based polling for a session.
+     */
+    unsuppressPolling(sessionId: string): void;
+    /**
+     * Advance a session's byteOffset to the current file size so the next
+     * poll doesn't replay already-delivered messages. Called after runSession()
+     * completes and the session is remapped to its provider ID.
+     */
+    syncOffsetToEnd(sessionId: string): Promise<void>;
     /** Start the global poll loop. Call once at server startup. */
     start(intervalMs?: number): void;
     /** Stop polling. Call on server shutdown. */

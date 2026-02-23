@@ -17,6 +17,9 @@ export interface ActiveSession {
     alwaysAllowedTools: Set<string>;
     status: SessionStatus;
     lastError: string | null;
+    /** The initial prompt text, stored so ws.ts can send it as a synthetic
+     *  user message when a client connects before the JSONL file is available. */
+    initialPrompt: string | null;
 }
 /** Summary returned by GET /api/sessions (list endpoint). */
 export interface SessionSummaryDTO {

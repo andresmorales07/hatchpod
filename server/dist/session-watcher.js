@@ -8,6 +8,8 @@ export class SessionWatcher {
     adapter;
     sessions = new Map();
     intervalHandle = null;
+    /** Session IDs whose polling is suppressed (runSession broadcasts directly). */
+    suppressedIds = new Set();
     constructor(adapter) {
         this.adapter = adapter;
     }
@@ -45,6 +47,7 @@ export class SessionWatcher {
             lineBuffer: "",
             messageIndex: 0,
             clients: new Set([client]),
+            pollingSuppressed: this.suppressedIds.has(sessionId),
         };
         this.sessions.set(sessionId, watched);
         // Resolve file path via adapter (async)
@@ -94,6 +97,68 @@ export class SessionWatcher {
             return;
         this.sessions.delete(oldId);
         this.sessions.set(newId, watched);
+    }
+    /**
+     * Suppress file-based polling for a session. Used by runSession() to
+     * prevent the watcher from delivering messages that are already being
+     * broadcast directly. The session entry is created if it doesn't exist.
+     */
+    suppressPolling(sessionId) {
+        const watched = this.sessions.get(sessionId);
+        if (watched) {
+            watched.pollingSuppressed = true;
+        }
+        // If no entry yet, it'll be created when subscribe() is called —
+        // we store the flag for later in case subscribe comes after this call.
+        this.suppressedIds.add(sessionId);
+    }
+    /**
+     * Re-enable file-based polling for a session.
+     */
+    unsuppressPolling(sessionId) {
+        this.suppressedIds.delete(sessionId);
+        const watched = this.sessions.get(sessionId);
+        if (watched) {
+            watched.pollingSuppressed = false;
+        }
+    }
+    /**
+     * Advance a session's byteOffset to the current file size so the next
+     * poll doesn't replay already-delivered messages. Called after runSession()
+     * completes and the session is remapped to its provider ID.
+     */
+    async syncOffsetToEnd(sessionId) {
+        const watched = this.sessions.get(sessionId);
+        if (!watched)
+            return;
+        // Resolve file path if needed
+        if (!watched.filePath) {
+            const filePath = await this.adapter.getSessionFilePath(sessionId);
+            if (filePath)
+                watched.filePath = filePath;
+        }
+        if (!watched.filePath)
+            return;
+        try {
+            // Read the full file to count normalized messages (for correct messageIndex)
+            // and advance byteOffset to EOF so future polls only see new data.
+            const content = await readFile(watched.filePath, "utf-8");
+            watched.byteOffset = Buffer.byteLength(content, "utf-8");
+            watched.lineBuffer = "";
+            let idx = 0;
+            for (const line of content.split("\n")) {
+                if (!line.trim())
+                    continue;
+                if (this.adapter.normalizeFileLine(line, idx))
+                    idx++;
+            }
+            if (idx > watched.messageIndex)
+                watched.messageIndex = idx;
+        }
+        catch (err) {
+            if (err.code !== "ENOENT")
+                throw err;
+        }
     }
     /** Start the global poll loop. Call once at server startup. */
     start(intervalMs = 200) {
@@ -205,6 +270,9 @@ export class SessionWatcher {
     }
     /** Poll a single session for new data. */
     async pollSession(sessionId, watched) {
+        // Skip polling for sessions where runSession() broadcasts directly.
+        if (watched.pollingSuppressed)
+            return;
         if (!watched.filePath) {
             // File path wasn't available at subscribe time (e.g., session created
             // via API with a temp UUID, then remapped to the CLI session ID).

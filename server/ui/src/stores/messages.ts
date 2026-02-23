@@ -154,6 +154,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               thinkingStart = null;
               set({ thinkingText: "", thinkingStartTime: null });
             }
+            // Re-fetch sessions on terminal states so the session list
+            // picks up slug/summary from the now-finalized JSONL file.
+            if (msg.status === "completed" || msg.status === "error" || msg.status === "idle") {
+              useSessionsStore.getState().fetchSessions();
+            }
             break;
           case "session_redirected": {
             // Server remapped our temp session ID to the real provider ID.

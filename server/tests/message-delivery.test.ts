@@ -58,16 +58,18 @@ describe("Message Delivery", () => {
       m.type === "status" && (m as ServerMessage & { status: string }).status === "completed",
     );
 
-    // Should have 4 message events: assistant text, tool_use, tool_result, assistant text
+    // Should have 5 message events: user (synthetic prompt), assistant text,
+    // tool_use (assistant), tool_result (user), assistant text
     const msgEvents = messages.filter((m) => m.type === "message") as Array<{
       type: string;
       message: { role: string };
     }>;
-    expect(msgEvents.length).toBe(4);
-    expect(msgEvents[0].message.role).toBe("assistant");
-    expect(msgEvents[1].message.role).toBe("assistant"); // tool_use comes from assistant
-    expect(msgEvents[2].message.role).toBe("user"); // tool_result
-    expect(msgEvents[3].message.role).toBe("assistant");
+    expect(msgEvents.length).toBe(5);
+    expect(msgEvents[0].message.role).toBe("user"); // synthetic initial prompt
+    expect(msgEvents[1].message.role).toBe("assistant");
+    expect(msgEvents[2].message.role).toBe("assistant"); // tool_use comes from assistant
+    expect(msgEvents[3].message.role).toBe("user"); // tool_result
+    expect(msgEvents[4].message.role).toBe("assistant");
 
     ws.close();
   });

@@ -160,6 +160,7 @@ export async function createSession(req) {
         alwaysAllowedTools: new Set(),
         status: hasPrompt ? "starting" : "idle",
         lastError: null,
+        initialPrompt: hasPrompt && !req.resumeSessionId ? req.prompt : null,
     };
     sessions.set(id, session);
     if (hasPrompt) {
@@ -212,18 +213,35 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
                 }
             },
         });
+        // Suppress file-based polling for this session while we're running.
+        // We broadcast messages directly below (lower latency than the 200ms poll).
+        // Without this, the watcher would also pick up the same messages from the
+        // JSONL file and broadcast them a second time → duplicate messages.
+        if (watcher)
+            watcher.suppressPolling(session.sessionId);
+        // The SDK doesn't yield the initial user prompt back from the iterator —
+        // it's the input to sdkQuery(). Broadcast a synthetic user message so
+        // connected clients see the prompt in the chat immediately. This covers
+        // the sendFollowUp(idle) path where the WS client is already connected.
+        // For sessions created with a prompt from the REST API (NewSessionPage),
+        // the client hasn't connected yet so ws.ts sends the prompt on connect.
+        if (!resumeSessionId) {
+            broadcastToSession(session.sessionId, {
+                type: "message",
+                message: { role: "user", parts: [{ type: "text", text: prompt }], index: 0 },
+            });
+        }
         // Manual iteration: we need the generator's return value (ProviderSessionResult)
         // which for-await discards.
         let result;
         while (!(result = await generator.next()).done) {
             // Intercept system_init messages — broadcast slash commands separately.
-            // Messages are NOT stored; the watcher streams them from the JSONL file.
+            // These are runtime-only events that don't appear in the JSONL file.
             if (result.value.role === "system" && "event" in result.value && result.value.event.type === "system_init") {
                 broadcastToSession(session.sessionId, { type: "slash_commands", commands: result.value.event.slashCommands });
                 continue;
             }
             // Broadcast the message directly for live WebSocket clients.
-            // The watcher handles replay for late-connecting clients.
             broadcastToSession(session.sessionId, { type: "message", message: result.value });
         }
         const sessionResult = result.value;
@@ -240,11 +258,25 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
                 console.error(`Session remap: watcher not initialized, clients will not receive updates`);
             }
             else {
+                // Remap the watcher entry, unsuppress polling, and sync its byte
+                // offset to the current file size so it doesn't replay messages
+                // that were already broadcast directly during execution.
                 watcher.remap(oldId, session.sessionId);
+                watcher.unsuppressPolling(session.sessionId);
+                watcher.syncOffsetToEnd(session.sessionId).catch((err) => {
+                    console.warn(`Failed to sync watcher offset for ${session.sessionId}:`, err);
+                });
             }
             broadcastToSession(session.sessionId, {
                 type: "session_redirected",
                 newSessionId: session.sessionId,
+            });
+        }
+        else if (watcher) {
+            // No remap needed (e.g., resumed session) — unsuppress and sync offset
+            watcher.unsuppressPolling(session.sessionId);
+            watcher.syncOffsetToEnd(session.sessionId).catch((err) => {
+                console.warn(`Failed to sync watcher offset for ${session.sessionId}:`, err);
             });
         }
         // Status may have been mutated externally by interruptSession()
@@ -254,6 +286,11 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
         }
     }
     catch (err) {
+        // Ensure polling is unsuppressed on error so the watcher can take over
+        if (watcher) {
+            watcher.unsuppressPolling(session.sessionId);
+            watcher.syncOffsetToEnd(session.sessionId).catch(() => { });
+        }
         const currentStatus = session.status;
         const isAbortError = session.abortController.signal.aborted;
         if (currentStatus === "interrupted" && isAbortError) {
