@@ -13,13 +13,17 @@ afterAll(async () => {
 
 describe("Tool Approval", () => {
   it("receives approval request and approves", async () => {
+    // Create idle session, connect WS, then send prompt
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "[tool-approval] do it", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
     const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
+
+    ws.send(JSON.stringify({ type: "prompt", text: "[tool-approval] do it" }));
 
     // Collect until we see tool_approval_request
     const messages = await collectMessages(ws, (msg) => msg.type === "tool_approval_request");
@@ -48,11 +52,14 @@ describe("Tool Approval", () => {
   it("receives approval request and denies", async () => {
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "[tool-approval] deny me", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
     const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
+
+    ws.send(JSON.stringify({ type: "prompt", text: "[tool-approval] deny me" }));
 
     // Collect until approval request
     const messages = await collectMessages(ws, (msg) => msg.type === "tool_approval_request");
@@ -111,10 +118,14 @@ describe("Tool Approval", () => {
   it("always-allow auto-approves subsequent calls for the same tool", async () => {
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "[tool-approval-multi] go", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
+
     const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
+
+    ws.send(JSON.stringify({ type: "prompt", text: "[tool-approval-multi] go" }));
 
     // First tool call prompts for approval
     const msgs1 = await collectMessages(ws, (msg) => msg.type === "tool_approval_request");
@@ -149,11 +160,14 @@ describe("Tool Approval", () => {
   it("transitions status correctly during approval flow", async () => {
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "[tool-approval] status flow", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
     const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
+
+    ws.send(JSON.stringify({ type: "prompt", text: "[tool-approval] status flow" }));
 
     // Track all status transitions
     const statuses: string[] = [];

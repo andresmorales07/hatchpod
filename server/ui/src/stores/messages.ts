@@ -6,7 +6,7 @@ import type { NormalizedMessage, SlashCommand } from "../types";
 type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
   | { type: "tool_approval_request"; toolName: string; toolUseId: string; input: unknown }
-  | { type: "status"; status: string; error?: string }
+  | { type: "status"; status: string; error?: string; source?: "api" | "cli" }
   | { type: "slash_commands"; commands: SlashCommand[] }
   | { type: "thinking_delta"; text: string }
   | { type: "replay_complete" }
@@ -22,6 +22,7 @@ interface PendingApproval {
 interface MessagesState {
   messages: NormalizedMessage[];
   status: string;
+  source: "api" | "cli" | null;
   connected: boolean;
   pendingApproval: PendingApproval | null;
   slashCommands: SlashCommand[];
@@ -29,8 +30,6 @@ interface MessagesState {
   thinkingStartTime: number | null;
   thinkingDurations: Record<number, number>;
   lastError: string | null;
-  historySessionId: string | null;
-  historySessionCwd: string | null;
 
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -39,7 +38,6 @@ interface MessagesState {
   approveAlways: (toolUseId: string) => void;
   deny: (toolUseId: string, message?: string) => void;
   interrupt: () => void;
-  loadHistory: (sessionId: string, cwd: string) => Promise<void>;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -65,6 +63,7 @@ function send(msg: unknown): boolean {
 export const useMessagesStore = create<MessagesState>((set, get) => ({
   messages: [],
   status: "starting",
+  source: null,
   connected: false,
   pendingApproval: null,
   slashCommands: [],
@@ -72,8 +71,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   thinkingStartTime: null,
   thinkingDurations: {},
   lastError: null,
-  historySessionId: null,
-  historySessionCwd: null,
 
   connect: (sessionId: string) => {
     const shouldPreserve = _resuming;
@@ -87,6 +84,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       set({
         messages: [],
         status: "starting",
+        source: null,
         connected: false,
         pendingApproval: null,
         slashCommands: [],
@@ -94,8 +92,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         thinkingStartTime: null,
         thinkingDurations: {},
         lastError: null,
-        historySessionId: null,
-        historySessionCwd: null,
       });
     }
 
@@ -135,7 +131,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             break;
           }
           case "status":
-            set({ status: msg.status });
+            set({
+              status: msg.status,
+              ...(msg.source ? { source: msg.source } : {}),
+            });
             if (msg.status !== "running") {
               thinkingStart = null;
               set({ thinkingText: "", thinkingStartTime: null });
@@ -167,6 +166,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts);
           reconnectAttempts++;
+          set({ lastError: `Reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})…` });
           reconnectTimer = setTimeout(doConnect, delay);
         } else {
           set({ status: "disconnected", lastError: "Connection lost — reload to reconnect" });
@@ -193,17 +193,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   sendPrompt: (text) => {
     const state = get();
-    // History mode — resume session and send first message
-    if (state.historySessionId) {
+    // CLI/history sessions — resume via REST then reconnect WS
+    if (state.source === "cli" && currentSessionId) {
       const { token } = useAuthStore.getState();
       const sessStore = useSessionsStore.getState();
-      const cwd = state.historySessionCwd || sessStore.cwd;
+      const cwd = sessStore.sessions.find(s => s.id === currentSessionId)?.cwd || sessStore.cwd;
       const historyMessages = [...state.messages];
-      const historyId = state.historySessionId;
-      // Capture to detect if user navigated away before fetch completes
+      const historyId = currentSessionId;
       const expectedSessionId = currentSessionId;
 
-      // Clear error but keep historySessionId so retry works on failure
       set({ lastError: null });
 
       fetch("/api/sessions", {
@@ -218,12 +216,23 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       })
         .then(async (res) => {
           // Stale closure guard: user switched sessions while fetch was in-flight
-          if (currentSessionId !== expectedSessionId && currentSessionId !== null) return;
+          if (currentSessionId !== expectedSessionId && currentSessionId !== null) {
+            // Clean up the orphaned session so it doesn't linger on the server
+            if (res.ok) {
+              const orphan = await res.json().catch(() => null);
+              if (orphan?.id) {
+                fetch(`/api/sessions/${orphan.id}`, {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${token}` },
+                }).catch(() => {});
+              }
+            }
+            return;
+          }
           if (res.status === 401) { useAuthStore.getState().logout(); return; }
           if (res.ok) {
             const session = await res.json();
-            // Clear history state now that resume succeeded
-            set({ historySessionId: null, historySessionCwd: null });
+            set({ source: "api" }); // Now interactive
             sessStore.setActiveSession(session.id);
             sessStore.fetchSessions();
             // Pre-seed with history messages, then connect WS for new messages
@@ -234,7 +243,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             get().connect(session.id);
           } else {
             const errBody = await res.json().catch(() => null);
-            set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})` });
+            set({ lastError: errBody?.error ?? `Failed to resume session (${res.status})`, status: "error" });
           }
         })
         .catch((err) => {
@@ -270,44 +279,4 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
   interrupt: () => send({ type: "interrupt" }),
 
-  loadHistory: async (sessionId: string, cwd: string) => {
-    get().disconnect();
-    currentSessionId = null;
-    messageCount = 0;
-    set({
-      messages: [],
-      status: "history",
-      connected: false,
-      pendingApproval: null,
-      slashCommands: [],
-      thinkingText: "",
-      thinkingStartTime: null,
-      thinkingDurations: {},
-      lastError: null,
-      historySessionId: sessionId,
-      historySessionCwd: cwd,
-    });
-    const { token } = useAuthStore.getState();
-    try {
-      const res = await fetch(`/api/sessions/${sessionId}/history`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) { useAuthStore.getState().logout(); return; }
-      if (res.ok) {
-        const msgs = await res.json();
-        if (!Array.isArray(msgs)) {
-          set({ lastError: "Unexpected response from server" });
-          return;
-        }
-        messageCount = msgs.length;
-        set({ messages: msgs, status: "history" });
-      } else {
-        const errBody = await res.json().catch(() => null);
-        set({ lastError: errBody?.error ?? `Failed to load session history (${res.status})` });
-      }
-    } catch (err) {
-      console.error("Failed to load history:", err);
-      set({ lastError: "Unable to reach server" });
-    }
-  },
 }));

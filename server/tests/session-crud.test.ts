@@ -21,7 +21,6 @@ describe("Session CRUD", () => {
     expect(body.id).toBeDefined();
     // Test provider is fast — status may already be "running" or even "completed"
     expect(["starting", "running", "completed"]).toContain(body.status);
-    expect(body.createdAt).toBeDefined();
   });
 
   it("creates an idle session without a prompt", async () => {
@@ -52,10 +51,8 @@ describe("Session CRUD", () => {
     const session = await waitForStatus(id, "completed");
 
     expect(session.status).toBe("completed");
-    expect(session.messages).toBeDefined();
-    expect(Array.isArray(session.messages)).toBe(true);
-    expect(session.permissionMode).toBe("default");
     expect(session.cwd).toBeDefined();
+    expect(session.source).toBe("api");
   });
 
   it("returns 404 for unknown session", async () => {

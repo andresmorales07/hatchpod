@@ -72,12 +72,6 @@ describe("Follow-up Messages", () => {
     const msgEvents = messages.filter((m) => m.type === "message");
     expect(msgEvents.length).toBeGreaterThanOrEqual(1);
 
-    // Verify via REST that all messages are there
-    const detailRes = await api(`/api/sessions/${id}`);
-    const session = await detailRes.json() as { messages: Array<{ role: string }> };
-    // At least 2 messages: one from first prompt, one from follow-up
-    expect(session.messages.length).toBeGreaterThanOrEqual(2);
-
     ws.close();
   });
 

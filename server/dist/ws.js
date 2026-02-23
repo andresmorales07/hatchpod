@@ -1,5 +1,5 @@
 import { authenticateToken } from "./auth.js";
-import { getSession, handleApproval, sendFollowUp, interruptSession } from "./sessions.js";
+import { getActiveSession, handleApproval, sendFollowUp, interruptSession, getWatcher } from "./sessions.js";
 const WS_PATH_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/stream$/;
 const AUTH_TIMEOUT_MS = 10_000;
 export function extractSessionIdFromPath(pathname) {
@@ -49,68 +49,66 @@ export function handleWsConnection(ws, sessionId, ip) {
     ws.on("error", () => clearTimeout(authTimeout));
 }
 function setupSessionConnection(ws, sessionId) {
-    const session = getSession(sessionId);
-    if (!session) {
-        const msg = { type: "error", message: "session not found" };
-        ws.send(JSON.stringify(msg));
-        ws.close(4004, "session not found");
-        return;
-    }
-    // Add client to session
-    session.clients.add(ws);
-    // Replay buffered messages
-    for (const message of session.messages) {
-        const msg = { type: "message", message };
-        ws.send(JSON.stringify(msg));
-    }
-    // Replay slash commands if available
-    if (session.slashCommands.length > 0) {
-        const cmdMsg = { type: "slash_commands", commands: session.slashCommands };
-        ws.send(JSON.stringify(cmdMsg));
-    }
-    // Signal replay complete
-    const replayDone = { type: "replay_complete" };
-    ws.send(JSON.stringify(replayDone));
-    // Send current status
-    const statusMsg = {
+    const watcher = getWatcher();
+    const activeSession = getActiveSession(sessionId);
+    // Subscribe to watcher for message replay + live streaming.
+    // This works for BOTH API sessions and CLI sessions.
+    watcher.subscribe(sessionId, ws).catch((err) => {
+        console.error(`SessionWatcher subscribe failed for ${sessionId}:`, err);
+        if (ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: "error", message: "failed to load message history" }));
+            ws.send(JSON.stringify({ type: "replay_complete" }));
+        }
+    });
+    // Send source and status info
+    const source = activeSession ? "api" : "cli";
+    const status = activeSession?.status ?? "history";
+    ws.send(JSON.stringify({
         type: "status",
-        status: session.status,
-        ...(session.lastError ? { error: session.lastError } : {}),
-    };
-    ws.send(JSON.stringify(statusMsg));
-    // Send pending approval if any
-    if (session.pendingApproval) {
-        const approvalMsg = {
+        status,
+        source,
+        ...(activeSession?.lastError ? { error: activeSession.lastError } : {}),
+    }));
+    // Send pending approval for API sessions
+    if (activeSession?.pendingApproval) {
+        ws.send(JSON.stringify({
             type: "tool_approval_request",
-            toolName: session.pendingApproval.toolName,
-            toolUseId: session.pendingApproval.toolUseId,
-            input: session.pendingApproval.input,
-        };
-        ws.send(JSON.stringify(approvalMsg));
+            toolName: activeSession.pendingApproval.toolName,
+            toolUseId: activeSession.pendingApproval.toolUseId,
+            input: activeSession.pendingApproval.input,
+        }));
     }
     // Ping keepalive every 30s
     const pingInterval = setInterval(() => {
         if (ws.readyState === 1) {
-            const ping = { type: "ping" };
-            ws.send(JSON.stringify(ping));
+            ws.send(JSON.stringify({ type: "ping" }));
         }
     }, 30_000);
     // Handle incoming messages
-    ws.on("message", (data) => {
+    ws.on("message", async (data) => {
         let parsed;
         try {
             parsed = JSON.parse(typeof data === "string" ? data : data.toString());
         }
         catch (err) {
             console.error(`WebSocket session ${sessionId}: failed to parse JSON:`, err);
-            const errMsg = { type: "error", message: "invalid JSON" };
-            ws.send(JSON.stringify(errMsg));
+            ws.send(JSON.stringify({ type: "error", message: "invalid JSON" }));
+            return;
+        }
+        // All actions require an active API session
+        const session = getActiveSession(sessionId);
+        if (!session) {
+            ws.send(JSON.stringify({ type: "error", message: "no active session (CLI sessions are read-only)" }));
             return;
         }
         switch (parsed.type) {
-            case "prompt":
-                sendFollowUp(session, parsed.text);
+            case "prompt": {
+                const accepted = await sendFollowUp(session, parsed.text);
+                if (!accepted) {
+                    ws.send(JSON.stringify({ type: "error", message: "session is busy" }));
+                }
                 break;
+            }
             case "approve": {
                 let answers = parsed.answers;
                 if (answers !== undefined) {
@@ -127,22 +125,21 @@ function setupSessionConnection(ws, sessionId) {
                 handleApproval(session, parsed.toolUseId, false, parsed.message);
                 break;
             case "interrupt":
-                interruptSession(session.id);
+                interruptSession(session.sessionId);
                 break;
             default: {
-                const errMsg = { type: "error", message: "unknown message type" };
-                ws.send(JSON.stringify(errMsg));
+                ws.send(JSON.stringify({ type: "error", message: "unknown message type" }));
             }
         }
     });
     // Cleanup on close
     ws.on("close", () => {
         clearInterval(pingInterval);
-        session.clients.delete(ws);
+        watcher.unsubscribe(sessionId, ws);
     });
     ws.on("error", (err) => {
         console.error(`WebSocket error for session ${sessionId}:`, err.message);
         clearInterval(pingInterval);
-        session.clients.delete(ws);
+        watcher.unsubscribe(sessionId, ws);
     });
 }

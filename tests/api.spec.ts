@@ -57,8 +57,8 @@ test('gets session details', async ({ request }) => {
   expect(res.status()).toBe(200);
   const session = await res.json();
   expect(session.id).toBe(id);
-  expect(session).toHaveProperty('messages');
   expect(session).toHaveProperty('status');
+  expect(session).toHaveProperty('source', 'api');
 });
 
 test('interrupts a session', async ({ request }) => {
@@ -169,7 +169,7 @@ test('session respects cwd from request', async ({ request }) => {
   expect(session.cwd).toBe('/home/hatchpod/workspace');
 });
 
-test('idle session has correct status and empty messages', async ({ request }) => {
+test('idle session has correct status and fields', async ({ request }) => {
   const createRes = await request.post('/api/sessions', {
     data: { cwd: '/home/hatchpod/workspace' },
   });
@@ -179,6 +179,8 @@ test('idle session has correct status and empty messages', async ({ request }) =
   expect(res.status()).toBe(200);
   const session = await res.json();
   expect(session.status).toBe('idle');
-  expect(session.messages).toEqual([]);
+  expect(session.source).toBe('api');
+  expect(session.lastError).toBeNull();
+  expect(session.pendingApproval).toBeNull();
   expect(session.cwd).toBe('/home/hatchpod/workspace');
 });

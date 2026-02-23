@@ -1,44 +1,22 @@
 import type { NormalizedMessage, PermissionModeCommon, ApprovalDecision, SlashCommand } from "./providers/types.js";
-import type { WebSocket } from "ws";
 export type SessionStatus = "idle" | "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error" | "history";
-export interface Session {
-    id: string;
+/**
+ * Runtime handle for API-driven sessions only.
+ * No message storage — messages come from JSONL via SessionWatcher.
+ * No client tracking — the watcher handles WebSocket subscriptions.
+ */
+export interface ActiveSession {
+    sessionId: string;
     provider: string;
-    providerSessionId?: string;
-    status: SessionStatus;
+    cwd: string;
     createdAt: Date;
-    lastActivityAt: Date;
     permissionMode: PermissionModeCommon;
     model: string | undefined;
-    cwd: string;
     abortController: AbortController;
-    messages: NormalizedMessage[];
-    slashCommands: SlashCommand[];
-    totalCostUsd: number;
-    numTurns: number;
-    lastError: string | null;
     pendingApproval: PendingApproval | null;
     alwaysAllowedTools: Set<string>;
-    clients: Set<WebSocket>;
-}
-/** Serializable session representation for API responses (no internal handles). */
-export interface SessionDTO {
-    id: string;
     status: SessionStatus;
-    createdAt: string;
-    permissionMode: PermissionModeCommon;
-    model: string | undefined;
-    cwd: string;
-    numTurns: number;
-    totalCostUsd: number;
     lastError: string | null;
-    messages: NormalizedMessage[];
-    slashCommands: SlashCommand[];
-    pendingApproval: {
-        toolName: string;
-        toolUseId: string;
-        input: unknown;
-    } | null;
 }
 /** Summary returned by GET /api/sessions (list endpoint). */
 export interface SessionSummaryDTO {
@@ -87,6 +65,7 @@ export type ServerMessage = {
     type: "status";
     status: SessionStatus;
     error?: string;
+    source?: "api" | "cli";
 } | {
     type: "slash_commands";
     commands: SlashCommand[];

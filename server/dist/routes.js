@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
-import { listSessionsWithHistory, getSession, sessionToDTO, getSessionCount, createSession, deleteSession, } from "./sessions.js";
+import { listSessionsWithHistory, getActiveSession, getSessionCount, createSession, deleteSession, } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
@@ -114,16 +114,18 @@ export async function handleRequest(req, res) {
             }
         }
         try {
-            const session = await createSession(parsed);
-            json(res, 201, {
-                id: session.id,
-                status: session.status,
-                createdAt: session.createdAt.toISOString(),
-            });
+            const result = await createSession(parsed);
+            json(res, 201, { id: result.id, status: result.status });
         }
         catch (err) {
-            console.error("Failed to create session:", err);
-            json(res, 500, { error: "internal server error" });
+            const message = err instanceof Error ? err.message : String(err);
+            if (message.includes("maximum session limit")) {
+                json(res, 409, { error: message });
+            }
+            else {
+                console.error("Failed to create session:", err);
+                json(res, 500, { error: "internal server error" });
+            }
         }
         return;
     }
@@ -187,15 +189,26 @@ export async function handleRequest(req, res) {
         }
         return;
     }
-    // GET /api/sessions/:id — session details
+    // GET /api/sessions/:id — session details (API sessions only)
     const idMatch = pathname.match(SESSION_ID_RE);
     if (idMatch && method === "GET") {
-        const session = getSession(idMatch[1]);
+        const session = getActiveSession(idMatch[1]);
         if (!session) {
             json(res, 404, { error: "session not found" });
             return;
         }
-        json(res, 200, sessionToDTO(session));
+        json(res, 200, {
+            id: session.sessionId,
+            status: session.status,
+            cwd: session.cwd,
+            lastError: session.lastError,
+            pendingApproval: session.pendingApproval ? {
+                toolName: session.pendingApproval.toolName,
+                toolUseId: session.pendingApproval.toolUseId,
+                input: session.pendingApproval.input,
+            } : null,
+            source: "api",
+        });
         return;
     }
     // DELETE /api/sessions/:id — delete session (interrupts if running, then removes)

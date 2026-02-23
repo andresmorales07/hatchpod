@@ -264,9 +264,14 @@ export class TestAdapter {
             }
         }
         return {
-            providerSessionId: randomUUID(),
             totalCostUsd: 0.001,
             numTurns: Math.max(1, index),
         };
+    }
+    async getSessionFilePath(_sessionId) {
+        return null; // Test adapter doesn't write to disk
+    }
+    normalizeFileLine(_line, _index) {
+        return null; // Test adapter doesn't use file-based messages
     }
 }

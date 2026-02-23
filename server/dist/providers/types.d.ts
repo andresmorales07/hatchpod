@@ -92,4 +92,6 @@ export interface ProviderAdapter {
     readonly id: string;
     run(options: ProviderSessionOptions): AsyncGenerator<NormalizedMessage, ProviderSessionResult, undefined>;
     getSessionHistory?(sessionId: string): Promise<NormalizedMessage[]>;
+    getSessionFilePath(sessionId: string): Promise<string | null>;
+    normalizeFileLine(line: string, index: number): NormalizedMessage | null;
 }

@@ -419,4 +419,39 @@ export class ClaudeAdapter implements ProviderAdapter {
 
     return messages;
   }
+
+  async getSessionFilePath(sessionId: string): Promise<string | null> {
+    const { findSessionFile } = await import("../session-history.js");
+    return findSessionFile(sessionId);
+  }
+
+  normalizeFileLine(line: string, index: number): NormalizedMessage | null {
+    if (!line.trim()) return null;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line);
+    } catch (err) {
+      console.warn(`normalizeFileLine: failed to parse JSONL at index ${index}:`, (err as Error).message);
+      return null;
+    }
+
+    const type = parsed.type;
+    if (type !== "user" && type !== "assistant") return null;
+
+    const msg = parsed.message as Record<string, unknown> | undefined;
+    if (!msg) return null;
+
+    if (type === "assistant") {
+      return normalizeAssistant(
+        { type: "assistant", message: msg } as unknown as SDKAssistantMessage,
+        index,
+      );
+    }
+
+    return normalizeUser(
+      { type: "user", message: msg } as unknown as SDKUserMessage,
+      index,
+    );
+  }
 }

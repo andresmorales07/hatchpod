@@ -116,8 +116,9 @@ test('session creation navigates to chat page', async ({ page }) => {
   // Should navigate to the chat page for the fake session
   await expect(page).toHaveURL(new RegExp(`/session/${fakeSessionId}`), { timeout: 5000 });
 
-  // Composer should be visible on the chat page
-  await expect(page.getByPlaceholder('Send a message...')).toBeVisible({ timeout: 5000 });
+  // Composer should be visible on the chat page (may show viewer mode placeholder if WS reports CLI source)
+  const composer = page.locator('textarea[placeholder]');
+  await expect(composer).toBeVisible({ timeout: 5000 });
 });
 
 test('logout via token removal shows login page on reload', async ({ page }) => {

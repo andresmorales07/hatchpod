@@ -16,27 +16,29 @@ afterAll(async () => {
 });
 
 describe("WebSocket Flow", () => {
-  it("authenticates and receives replay + live messages", async () => {
-    // Create a session that will complete quickly
+  it("authenticates and receives live messages via WebSocket", async () => {
+    // Create idle session, connect WS, then send prompt
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "ws test", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
-    // Wait for completion so all messages are buffered
-    await waitForStatus(id, "completed");
-
-    // Now connect WS — should get replay
     const ws = await connectWs(id);
-    const messages = await collectMessages(ws, (msg) => msg.type === "replay_complete");
+    const replayMsgs = await collectMessages(ws, (msg) => msg.type === "replay_complete");
 
-    // Should have at least: message(s) + replay_complete
+    const replayComplete = replayMsgs.find((m) => m.type === "replay_complete");
+    expect(replayComplete).toBeDefined();
+
+    // Send prompt and collect live messages
+    ws.send(JSON.stringify({ type: "prompt", text: "ws test" }));
+
+    const messages = await collectMessages(ws, (m) =>
+      m.type === "status" && (m as ServerMessage & { status: string }).status === "completed",
+    );
+
     const messageEvents = messages.filter((m) => m.type === "message");
     expect(messageEvents.length).toBeGreaterThanOrEqual(1);
-
-    const replayComplete = messages.find((m) => m.type === "replay_complete");
-    expect(replayComplete).toBeDefined();
 
     ws.close();
   });
@@ -127,17 +129,35 @@ describe("WebSocket Flow", () => {
     ws.close();
   });
 
-  it("closes with error when connecting to non-existent session", async () => {
-    const wsUrl = `ws://127.0.0.1:${port}/api/sessions/00000000-0000-0000-0000-000000000000/stream`;
-    const ws = new WebSocket(wsUrl);
+  it("treats non-existent session as CLI/history session", async () => {
+    // Non-existent sessions are treated as potential CLI sessions (read-only).
+    // The server sends replay_complete + status: history without closing.
+    // These may arrive in either order, so collect until we have both.
+    const ws = await connectWs("00000000-0000-0000-0000-000000000000");
 
-    await new Promise<void>((resolve) => {
-      ws.once("open", () => {
-        ws.send(JSON.stringify({ type: "auth", token: getPassword() }));
-      });
-      ws.once("close", () => resolve());
+    let hasReplayComplete = false;
+    let hasStatus = false;
+    const messages = await collectMessages(ws, (m) => {
+      if (m.type === "replay_complete") hasReplayComplete = true;
+      if (m.type === "status") hasStatus = true;
+      return hasReplayComplete && hasStatus;
     });
-    // Server should have closed the connection with "session not found"
+
+    const replayComplete = messages.find((m) => m.type === "replay_complete");
+    expect(replayComplete).toBeDefined();
+
+    const statusMsg = messages.find((m) => m.type === "status") as ServerMessage & { status: string; source: string };
+    expect(statusMsg).toBeDefined();
+    expect(statusMsg.status).toBe("history");
+    expect(statusMsg.source).toBe("cli");
+
+    // Sending a prompt should return an error (no active session)
+    ws.send(JSON.stringify({ type: "prompt", text: "test" }));
+    const errorMsgs = await collectMessages(ws, (m) => m.type === "error");
+    const errMsg = errorMsgs.find((m) => m.type === "error") as ServerMessage & { message: string };
+    expect(errMsg.message).toContain("read-only");
+
+    ws.close();
   });
 
   it("returns error for unknown message type", async () => {

@@ -177,7 +177,11 @@ export async function listAllSessionHistory() {
     try {
         entries = await readdir(base, { withFileTypes: true });
     }
-    catch {
+    catch (err) {
+        const code = err?.code;
+        if (code !== "ENOENT") {
+            console.warn(`listAllSessionHistory: failed to read projects directory ${base}:`, err);
+        }
         return [];
     }
     const results = [];

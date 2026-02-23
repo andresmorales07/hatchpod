@@ -4,4 +4,6 @@ export declare class ClaudeAdapter implements ProviderAdapter {
     readonly id = "claude";
     run(options: ProviderSessionOptions): AsyncGenerator<NormalizedMessage, ProviderSessionResult, undefined>;
     getSessionHistory(sessionId: string): Promise<NormalizedMessage[]>;
+    getSessionFilePath(sessionId: string): Promise<string | null>;
+    normalizeFileLine(line: string, index: number): NormalizedMessage | null;
 }

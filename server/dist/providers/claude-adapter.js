@@ -332,4 +332,30 @@ export class ClaudeAdapter {
         }
         return messages;
     }
+    async getSessionFilePath(sessionId) {
+        const { findSessionFile } = await import("../session-history.js");
+        return findSessionFile(sessionId);
+    }
+    normalizeFileLine(line, index) {
+        if (!line.trim())
+            return null;
+        let parsed;
+        try {
+            parsed = JSON.parse(line);
+        }
+        catch (err) {
+            console.warn(`normalizeFileLine: failed to parse JSONL at index ${index}:`, err.message);
+            return null;
+        }
+        const type = parsed.type;
+        if (type !== "user" && type !== "assistant")
+            return null;
+        const msg = parsed.message;
+        if (!msg)
+            return null;
+        if (type === "assistant") {
+            return normalizeAssistant({ type: "assistant", message: msg }, index);
+        }
+        return normalizeUser({ type: "user", message: msg }, index);
+    }
 }

@@ -110,49 +110,72 @@ test('authenticates and receives replay + status', async () => {
   expect(types).toContain('status');
 });
 
-test('returns error for nonexistent session', async () => {
+test('nonexistent session receives replay_complete and status', async () => {
   const fakeId = '00000000-0000-0000-0000-000000000000';
 
-  const result = await new Promise<{ type: string; message: string }>((resolve) => {
+  const messages: Array<{ type: string; status?: string; source?: string }> = [];
+
+  await new Promise<void>((resolve) => {
     const ws = new WebSocket(wsUrl(fakeId));
     ws.on('open', () => {
       ws.send(JSON.stringify({ type: 'auth', token: API_PASSWORD }));
     });
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString());
-      if (msg.type === 'error') resolve(msg);
-    });
-    setTimeout(() => resolve({ type: 'timeout', message: 'no response' }), 5000);
-  });
-
-  expect(result.type).toBe('error');
-  expect(result.message).toBe('session not found');
-});
-
-test('receives message events from active session', async () => {
-  const sessionId = await createSession('What is 2+2?');
-
-  // Wait a moment for the session to start producing messages
-  await new Promise((r) => setTimeout(r, 2000));
-
-  const ws = await connectAndAuth(sessionId);
-  const normalizedMessages: unknown[] = [];
-
-  await new Promise<void>((resolve) => {
-    ws.on('message', (data) => {
-      const msg = JSON.parse(data.toString());
-      if (msg.type === 'message') {
-        normalizedMessages.push(msg.message);
+      messages.push(msg);
+      // Resolve once we have both expected messages
+      const types = messages.map((m) => m.type);
+      if (types.includes('replay_complete') && types.includes('status')) {
+        ws.close();
+        resolve();
       }
     });
-    // Collect messages for up to 5 seconds
-    setTimeout(resolve, 5000);
+    setTimeout(() => resolve(), 5000);
   });
 
-  ws.close();
+  const types = messages.map((m) => m.type);
+  expect(types).toContain('replay_complete');
+  expect(types).toContain('status');
+  // Nonexistent sessions are treated as CLI sessions (viewer mode)
+  const statusMsg = messages.find((m) => m.type === 'status');
+  expect(statusMsg?.source).toBe('cli');
+});
 
-  // Should have received at least one message (from replay or live)
-  expect(normalizedMessages.length).toBeGreaterThan(0);
+test('receives replay_complete and status for active session', async () => {
+  const sessionId = await createSession('What is 2+2?');
+
+  // Collect ALL messages from the start (don't use connectAndAuth which consumes messages)
+  const messages: Array<{ type: string; [key: string]: unknown }> = [];
+
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(wsUrl(sessionId));
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'auth', token: API_PASSWORD }));
+    });
+    ws.on('message', (data) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === 'error' && msg.message === 'unauthorized') {
+        reject(new Error('Auth failed'));
+        return;
+      }
+      messages.push(msg);
+      // Resolve once we have both expected messages
+      const types = messages.map((m) => m.type);
+      if (types.includes('replay_complete') && types.includes('status')) {
+        ws.close();
+        resolve();
+      }
+    });
+    ws.on('error', reject);
+    setTimeout(() => { ws.close(); resolve(); }, 5000);
+  });
+
+  const types = messages.map((m) => m.type);
+  expect(types).toContain('replay_complete');
+  expect(types).toContain('status');
+  // Active API session should report source as "api"
+  const statusMsg = messages.find((m) => m.type === 'status');
+  expect(statusMsg?.source).toBe('api');
 });
 
 test('interrupt via WebSocket', async () => {

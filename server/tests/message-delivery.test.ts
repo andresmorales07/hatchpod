@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startServer, stopServer, resetSessions, api, waitForStatus } from "./helpers.js";
+import { startServer, stopServer, resetSessions, api, connectWs, collectMessages, waitForStatus } from "./helpers.js";
+import type { ServerMessage } from "../src/types.js";
 
 beforeAll(async () => {
   await startServer();
@@ -11,75 +12,91 @@ afterAll(async () => {
 });
 
 describe("Message Delivery", () => {
-  it("echoes a message via REST polling", async () => {
+  it("echoes a message via WebSocket", async () => {
+    // Create idle session, then send prompt via WS
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "Hello world", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
-    const session = await waitForStatus(id, "completed") as {
-      messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>;
-    };
+    const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
 
-    expect(session.messages.length).toBeGreaterThanOrEqual(1);
-    const assistantMsg = session.messages.find((m) => m.role === "assistant");
+    ws.send(JSON.stringify({ type: "prompt", text: "Hello world" }));
+
+    const messages = await collectMessages(ws, (m) =>
+      m.type === "status" && (m as ServerMessage & { status: string }).status === "completed",
+    );
+
+    const msgEvents = messages.filter((m) => m.type === "message") as Array<{
+      type: string;
+      message: { role: string; parts: Array<{ type: string; text?: string }> };
+    }>;
+    expect(msgEvents.length).toBeGreaterThanOrEqual(1);
+    const assistantMsg = msgEvents.find((m) => m.message.role === "assistant");
     expect(assistantMsg).toBeDefined();
-    const textPart = assistantMsg!.parts.find((p) => p.type === "text");
+    const textPart = assistantMsg!.message.parts.find((p) => p.type === "text");
     expect(textPart?.text).toBe("Echo: Hello world");
+
+    ws.close();
   });
 
-  it("delivers multi-turn sequence", async () => {
+  it("delivers multi-turn sequence via WebSocket", async () => {
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "[multi-turn] go", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
-    const session = await waitForStatus(id, "completed") as {
-      messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>;
-    };
+    const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
 
-    // Should have 4 messages: assistant text, tool_use, tool_result, assistant text
-    expect(session.messages.length).toBe(4);
-    expect(session.messages[0].role).toBe("assistant");
-    expect(session.messages[1].role).toBe("assistant"); // tool_use comes from assistant
-    expect(session.messages[2].role).toBe("user"); // tool_result
-    expect(session.messages[3].role).toBe("assistant");
+    ws.send(JSON.stringify({ type: "prompt", text: "[multi-turn] go" }));
+
+    const messages = await collectMessages(ws, (m) =>
+      m.type === "status" && (m as ServerMessage & { status: string }).status === "completed",
+    );
+
+    // Should have 4 message events: assistant text, tool_use, tool_result, assistant text
+    const msgEvents = messages.filter((m) => m.type === "message") as Array<{
+      type: string;
+      message: { role: string };
+    }>;
+    expect(msgEvents.length).toBe(4);
+    expect(msgEvents[0].message.role).toBe("assistant");
+    expect(msgEvents[1].message.role).toBe("assistant"); // tool_use comes from assistant
+    expect(msgEvents[2].message.role).toBe("user"); // tool_result
+    expect(msgEvents[3].message.role).toBe("assistant");
+
+    ws.close();
   });
 
-  it("sets error status with partial messages on provider error", async () => {
+  it("sets error status on provider error", async () => {
     const createRes = await api("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ prompt: "[error] oops", provider: "test" }),
+      body: JSON.stringify({ provider: "test" }),
     });
     const { id } = await createRes.json();
 
-    const session = await waitForStatus(id, "error") as {
-      status: string;
-      lastError: string;
-      messages: Array<{ role: string }>;
-    };
+    const ws = await connectWs(id);
+    await collectMessages(ws, (m) => m.type === "replay_complete");
 
+    ws.send(JSON.stringify({ type: "prompt", text: "[error] oops" }));
+
+    const messages = await collectMessages(ws, (m) =>
+      m.type === "status" && (m as ServerMessage & { status: string }).status === "error",
+    );
+
+    // Verify error status via REST
+    const session = await waitForStatus(id, "error") as { status: string; lastError: string };
     expect(session.status).toBe("error");
     expect(session.lastError).toContain("Simulated provider error");
-    // Should have the partial message that was yielded before the error
-    expect(session.messages.length).toBeGreaterThanOrEqual(1);
-  });
 
-  it("returns cost and turns in completed session", async () => {
-    const createRes = await api("/api/sessions", {
-      method: "POST",
-      body: JSON.stringify({ prompt: "cost test", provider: "test" }),
-    });
-    const { id } = await createRes.json();
+    // Should have at least one message delivered before the error
+    const msgEvents = messages.filter((m) => m.type === "message");
+    expect(msgEvents.length).toBeGreaterThanOrEqual(1);
 
-    const session = await waitForStatus(id, "completed") as {
-      totalCostUsd: number;
-      numTurns: number;
-    };
-
-    expect(session.totalCostUsd).toBe(0.001);
-    expect(session.numTurns).toBeGreaterThanOrEqual(1);
+    ws.close();
   });
 });

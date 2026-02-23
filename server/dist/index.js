@@ -6,6 +6,8 @@ import { WebSocketServer } from "ws";
 import { requirePassword, getRequestIp } from "./auth.js";
 import { handleRequest } from "./routes.js";
 import { handleWsConnection, extractSessionIdFromPath } from "./ws.js";
+import { initWatcher } from "./sessions.js";
+import { getProvider } from "./providers/index.js";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "public");
 const MIME_TYPES = {
@@ -51,6 +53,9 @@ function setSecurityHeaders(res) {
     }
 }
 export function createApp() {
+    // Initialize the SessionWatcher with the default provider adapter.
+    // This starts polling JSONL session files for new messages.
+    initWatcher(getProvider("claude"));
     const server = createHttpServer(async (req, res) => {
         try {
             setSecurityHeaders(res);

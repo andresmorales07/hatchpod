@@ -30,14 +30,12 @@ export function ChatPage() {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
   const {
-    messages, slashCommands, status, connected, pendingApproval, lastError,
+    messages, slashCommands, status, source, connected, pendingApproval, lastError,
     thinkingText, thinkingStartTime, thinkingDurations,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
-    loadHistory,
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
-  const sessionStatus = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id)?.status);
 
   useEffect(() => {
     if (activeSessionId && activeSessionId !== id) {
@@ -49,7 +47,6 @@ export function ChatPage() {
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const fetchedSessionsRef = useRef(false);
 
   const toolResults = useMemo(() => {
     const map = new Map<string, ToolResultPart>();
@@ -66,25 +63,11 @@ export function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    fetchedSessionsRef.current = false;
-  }, [id]);
-
-  useEffect(() => {
     if (!id) return;
     useSessionsStore.getState().setActiveSession(id);
-
-    if (sessionStatus === "history") {
-      const session = useSessionsStore.getState().sessions.find((s) => s.id === id);
-      loadHistory(id, session?.cwd ?? "");
-    } else if (sessionStatus !== undefined) {
-      connect(id);
-    } else if (!fetchedSessionsRef.current) {
-      // Sessions not loaded yet — trigger fetch once; effect re-runs when sessionStatus updates
-      fetchedSessionsRef.current = true;
-      useSessionsStore.getState().fetchSessions();
-    }
+    connect(id);
     return () => disconnect();
-  }, [id, sessionStatus, connect, disconnect, loadHistory]);
+  }, [id, connect, disconnect]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,6 +85,7 @@ export function ChatPage() {
 
   const isThinkingActive = thinkingText.length > 0 && thinkingStartTime != null;
   const isRunning = status === "running" || status === "starting";
+  const isViewerMode = source === "cli" && !isRunning;
   const sessionName = activeSession?.summary || activeSession?.slug || id?.slice(0, 8) || "Chat";
   const visibleError = lastError && lastError !== dismissedError ? lastError : null;
 
@@ -180,6 +164,7 @@ export function ChatPage() {
         slashCommands={slashCommands}
         isDisabled={isRunning}
         isRunning={isRunning}
+        viewerMode={isViewerMode}
         onSend={(text) => { const ok = sendPrompt(text); if (ok) setIsAtBottom(true); return ok; }}
         onInterrupt={interrupt}
       />
