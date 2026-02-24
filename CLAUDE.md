@@ -45,7 +45,8 @@ Two Docker volumes persist state across container restarts:
 │   ├── skills/
 │   │   ├── build-and-test/SKILL.md  # /build-and-test — rebuild dist, vitest, stage
 │   │   ├── dev-server/SKILL.md      # /dev-server — Vite dev server + API server
-│   │   └── docker-e2e/SKILL.md      # /docker-e2e — Docker build + Playwright e2e
+│   │   ├── docker-e2e/SKILL.md      # /docker-e2e — Docker build + Playwright e2e
+│   │   └── release/SKILL.md         # /release — bump version, rebuild, commit, tag, push
 │   └── agents/
 │       ├── security-reviewer.md     # Auth, path traversal, container security review
 │       └── ui-reviewer.md           # Accessibility, UX, React patterns review
@@ -343,6 +344,7 @@ User-invokable skills in `.claude/skills/`:
 - **`/dev-server`** — Start the Vite dev server + API server for UI development. Use this instead of rebuilding `server/public/` when working on UI files.
 - **`/build-and-test`** — After modifying `server/src/` files: rebuilds `server/dist/` via `npm run build`, runs vitest unit tests, and stages the rebuilt dist files. Stops on failure.
 - **`/docker-e2e`** — Full e2e test cycle: builds Docker image, starts a container on offset ports (17681/12222/18080), waits for healthy, runs Playwright tests, and cleans up. Safe to run inside hatchpod itself.
+- **`/release`** — Cut a release: asks for bump type (patch/minor/major), updates version, rebuilds dist, runs tests, commits, tags, and pushes. Use instead of doing version tags manually.
 
 ### Subagents
 
