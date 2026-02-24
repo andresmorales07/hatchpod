@@ -1,9 +1,8 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
 import { listSessionsWithHistory, getActiveSession, getSessionCount, createSession, deleteSession, } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
-import { extractTasks } from "./task-extractor.js";
 const startTime = Date.now();
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 const SESSION_HISTORY_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/history$/;
@@ -173,10 +172,6 @@ export async function handleRequest(req, res) {
             json(res, 400, { error: "unknown provider" });
             return;
         }
-        if (!adapter.getSessionHistory) {
-            json(res, 404, { error: "provider does not support session history" });
-            return;
-        }
         try {
             const messages = await adapter.getSessionHistory(sessionId);
             json(res, 200, messages);
@@ -208,48 +203,22 @@ export async function handleRequest(req, res) {
             json(res, 400, { error: "unknown provider" });
             return;
         }
-        const filePath = await adapter.getSessionFilePath(sessionId);
-        if (!filePath) {
-            json(res, 404, { error: "session not found" });
-            return;
-        }
-        let content;
+        const beforeParam = url.searchParams.get("before");
+        const limitParam = url.searchParams.get("limit");
+        const before = beforeParam != null ? parseInt(beforeParam, 10) : undefined;
+        const limit = limitParam != null ? parseInt(limitParam, 10) || 30 : undefined;
         try {
-            content = await readFile(filePath, "utf-8");
+            const result = await adapter.getMessages(sessionId, { before, limit });
+            json(res, 200, result);
         }
         catch (err) {
-            if (err.code === "ENOENT") {
+            if (err instanceof Error && err.name === "SessionNotFound") {
                 json(res, 404, { error: "session not found" });
                 return;
             }
-            console.error(`Failed to read session file for ${sessionId}:`, err);
+            console.error(`Failed to get messages for ${sessionId}:`, err);
             json(res, 500, { error: "internal server error" });
-            return;
         }
-        // Normalize all lines
-        const allMessages = [];
-        let idx = 0;
-        for (const line of content.split("\n")) {
-            if (!line.trim())
-                continue;
-            const normalized = adapter.normalizeFileLine(line, idx);
-            if (normalized) {
-                allMessages.push(normalized);
-                idx++;
-            }
-        }
-        const beforeParam = url.searchParams.get("before");
-        const limitParam = url.searchParams.get("limit");
-        const before = beforeParam != null ? parseInt(beforeParam, 10) : allMessages.length;
-        const limit = Math.min(Math.max(parseInt(limitParam ?? "30", 10) || 30, 1), 100);
-        // Slice: messages with index < before, take the last `limit`
-        const eligible = allMessages.filter((m) => m.index < before);
-        const page = eligible.slice(-limit);
-        const oldestIndex = page.length > 0 ? page[0].index : 0;
-        const hasMore = eligible.length > page.length;
-        // Also extract tasks from full message set
-        const tasks = extractTasks(allMessages);
-        json(res, 200, { messages: page, hasMore, oldestIndex, tasks });
         return;
     }
     // GET /api/sessions/:id — session details (API sessions only)

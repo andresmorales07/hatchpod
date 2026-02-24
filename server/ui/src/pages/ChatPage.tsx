@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowDown, ArrowLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TaskList } from "@/components/TaskList";
-import type { ToolResultPart, TaskItem, TaskStatus } from "@/types";
+import type { ToolResultPart, ExtractedTask, TaskStatus } from "@shared/types";
 
 const statusStyles: Record<string, string> = {
   idle: "bg-emerald-500/15 text-emerald-400 border-transparent",
@@ -44,7 +44,7 @@ function parseTaskCreate(input: unknown): { subject: string; activeForm?: string
   };
 }
 
-function applyTaskUpdate(existing: TaskItem, input: unknown): void {
+function applyTaskUpdate(existing: ExtractedTask, input: unknown): void {
   if (input == null || typeof input !== "object" || Array.isArray(input)) return;
   const rec = input as Record<string, unknown>;
   if (isValidTaskStatus(rec.status)) existing.status = rec.status;
@@ -98,19 +98,19 @@ export function ChatPage() {
   // Extract tasks from live messages (those after initial replay) and merge with server tasks
   const tasks = useMemo(() => {
     // Start with a map from server-provided tasks
-    const taskMap = new Map<string, TaskItem>();
+    const taskMap = new Map<string, ExtractedTask>();
     for (const t of serverTasks) {
       taskMap.set(t.id, { ...t });
     }
 
     // Layer on tasks from live messages (client-side extraction for messages after replay)
-    const pendingCreates = new Map<string, TaskItem>();
+    const pendingCreates = new Map<string, ExtractedTask>();
     for (const msg of messages) {
       if (msg.role === "system") continue;
       for (const part of msg.parts) {
         if (part.type === "tool_use" && part.toolName === "TaskCreate") {
           const { subject, activeForm } = parseTaskCreate(part.input);
-          const item: TaskItem = { id: part.toolUseId, subject, activeForm, status: "pending" };
+          const item: ExtractedTask = { id: part.toolUseId, subject, activeForm, status: "pending" };
           pendingCreates.set(part.toolUseId, item);
         }
         if (part.type === "tool_result") {

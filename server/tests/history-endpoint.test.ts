@@ -104,12 +104,12 @@ describe("GET /api/sessions/:id/history", () => {
     expect(body.error).toBe("unknown provider");
   });
 
-  it("returns 404 for provider without getSessionHistory (test provider)", async () => {
+  it("returns empty array for test provider (no JSONL files)", async () => {
     const sid = randomUUID();
     const res = await api(`/api/sessions/${sid}/history?provider=test`);
-    expect(res.status).toBe(404);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe("provider does not support session history");
+    expect(res.status).toBe(200);
+    const body = await res.json() as unknown[];
+    expect(body).toEqual([]);
   });
 
   it("defaults to claude provider when no ?provider= param", async () => {

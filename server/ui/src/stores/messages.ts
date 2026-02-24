@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useAuthStore } from "./auth";
 import { useSessionsStore } from "./sessions";
-import type { NormalizedMessage, SlashCommand, TaskItem } from "../types";
+import type { NormalizedMessage, SlashCommand, ExtractedTask } from "@shared/types";
 
 type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
@@ -40,7 +40,7 @@ interface MessagesState {
   totalMessageCount: number;
 
   // Server-extracted tasks (from full message scan)
-  serverTasks: TaskItem[];
+  serverTasks: ExtractedTask[];
 
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -184,7 +184,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
           case "tasks": {
             if (Array.isArray(msg.tasks)) {
-              set({ serverTasks: msg.tasks as TaskItem[] });
+              set({ serverTasks: msg.tasks as ExtractedTask[] });
             }
             break;
           }
@@ -315,7 +315,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
         // Update server tasks if returned
         if (Array.isArray(data.tasks) && data.tasks.length > 0) {
-          set({ serverTasks: data.tasks as TaskItem[] });
+          set({ serverTasks: data.tasks as ExtractedTask[] });
         }
 
         set((s) => ({

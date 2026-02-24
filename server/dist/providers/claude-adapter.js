@@ -1,4 +1,6 @@
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { cleanMessageText } from "./message-cleanup.js";
+import { getToolSummary } from "./tool-summary.js";
 function normalizeAssistant(msg, index, accumulatedThinking = "") {
     const content = msg.message?.content;
     if (!Array.isArray(content))
@@ -18,6 +20,7 @@ function normalizeAssistant(msg, index, accumulatedThinking = "") {
                         toolUseId: block.id,
                         toolName: block.name,
                         input: block.input,
+                        summary: getToolSummary(block.name, block.input),
                     });
                 }
                 break;
@@ -37,43 +40,6 @@ function normalizeAssistant(msg, index, accumulatedThinking = "") {
     if (parts.length === 0)
         return null;
     return { role: "assistant", parts, index };
-}
-/**
- * Strip system/protocol XML tags from message text.
- * NOTE: Keep in sync with server/ui/src/lib/message-cleanup.ts
- *
- * Tags whose content is removed entirely. Add new entries as Claude Code
- * introduces new protocol tags.
- */
-const SYSTEM_TAGS = [
-    "system-reminder",
-    "assistant_context",
-    "task-notification",
-    "user-prompt-submit-hook",
-    "EXTREMELY_IMPORTANT",
-    "EXTREMELY-IMPORTANT",
-    "local-command-caveat",
-    "command-message",
-    "fast_mode_info",
-];
-const STRIP_RE = new RegExp(SYSTEM_TAGS.map((t) => `<${t}>[\\s\\S]*?</${t}>`).join("|"), "g");
-/**
- * Full message cleanup: strip system tags, unwrap stdout, convert slash-command markup.
- * NOTE: Keep in sync with server/ui/src/lib/message-cleanup.ts cleanMessageText().
- */
-function cleanMessageText(text) {
-    // 1. Strip all known system/protocol XML blocks
-    let cleaned = text.replace(STRIP_RE, "");
-    // 2. Unwrap <local-command-stdout>...</local-command-stdout> to plain text
-    cleaned = cleaned.replace(/<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/g, "$1");
-    // 3. Convert <command-name>/<cmd></command-name> ... to clean "/cmd args"
-    const m = cleaned.match(/^\s*<command-name>(\/[^<]+)<\/command-name>\s*(?:<command-args>([\s\S]*?)<\/command-args>)?/);
-    if (m) {
-        const name = m[1].trim();
-        const args = m[2]?.trim();
-        cleaned = args ? `${name} ${args}` : name;
-    }
-    return cleaned.trim();
 }
 function normalizeUser(msg, index) {
     const inner = msg.message;
@@ -265,14 +231,11 @@ export class ClaudeAdapter {
         }
         return { providerSessionId, totalCostUsd, numTurns };
     }
-    async getSessionHistory(sessionId) {
-        const { findSessionFile } = await import("../session-history.js");
-        const filePath = await findSessionFile(sessionId);
-        if (!filePath) {
-            const err = new Error(`Session file not found for ${sessionId}`);
-            err.name = "SessionNotFound";
-            throw err;
-        }
+    /**
+     * Parse all messages from a JSONL file into normalized messages.
+     * Computes thinking duration from timestamps and attaches tool summaries.
+     */
+    async _parseAllMessages(filePath) {
         const { createReadStream } = await import("node:fs");
         const { createInterface } = await import("node:readline");
         const stream = createReadStream(filePath, { encoding: "utf-8" });
@@ -280,7 +243,6 @@ export class ClaudeAdapter {
         const messages = [];
         let messageIndex = 0;
         let skippedLines = 0;
-        // Track the previous line's timestamp to compute thinking duration
         let prevTimestampMs = null;
         try {
             for await (const line of rl) {
@@ -296,13 +258,11 @@ export class ClaudeAdapter {
                 }
                 const type = parsed.type;
                 const lineTs = typeof parsed.timestamp === "string" ? Date.parse(parsed.timestamp) : NaN;
-                // Skip non-message lines but still track their timestamps
                 if (type !== "user" && type !== "assistant") {
                     if (!Number.isNaN(lineTs))
                         prevTimestampMs = lineTs;
                     continue;
                 }
-                // Skip system-injected user messages (skill content, system context, etc.)
                 if (parsed.isMeta || parsed.isSynthetic) {
                     if (!Number.isNaN(lineTs))
                         prevTimestampMs = lineTs;
@@ -314,7 +274,6 @@ export class ClaudeAdapter {
                 let normalized = null;
                 if (type === "assistant") {
                     normalized = normalizeAssistant({ type: "assistant", message: msg }, messageIndex);
-                    // Compute thinking duration from JSONL timestamps
                     if (normalized?.role === "assistant" &&
                         normalized.parts.some((p) => p.type === "reasoning") &&
                         prevTimestampMs != null &&
@@ -330,19 +289,64 @@ export class ClaudeAdapter {
                     messages.push(normalized);
                     messageIndex++;
                 }
-                // Update prevTimestampMs for the next iteration
                 if (!Number.isNaN(lineTs))
                     prevTimestampMs = lineTs;
             }
         }
         finally {
             if (skippedLines > 0) {
-                console.warn(`getSessionHistory(${sessionId}): skipped ${skippedLines} unparseable JSONL line(s) in ${filePath}`);
+                console.warn(`_parseAllMessages: skipped ${skippedLines} unparseable JSONL line(s) in ${filePath}`);
             }
             rl.close();
             stream.destroy();
         }
         return messages;
+    }
+    async getSessionHistory(sessionId) {
+        const { findSessionFile } = await import("../session-history.js");
+        const filePath = await findSessionFile(sessionId);
+        if (!filePath) {
+            const err = new Error(`Session file not found for ${sessionId}`);
+            err.name = "SessionNotFound";
+            throw err;
+        }
+        return this._parseAllMessages(filePath);
+    }
+    async getMessages(sessionId, options) {
+        const filePath = await this.getSessionFilePath(sessionId);
+        if (!filePath) {
+            const err = new Error(`Session file not found for ${sessionId}`);
+            err.name = "SessionNotFound";
+            throw err;
+        }
+        const allMessages = await this._parseAllMessages(filePath);
+        const { extractTasks } = await import("../task-extractor.js");
+        const tasks = extractTasks(allMessages);
+        const before = options?.before ?? allMessages.length;
+        const limit = Math.min(Math.max(options?.limit ?? 30, 1), 100);
+        const eligible = allMessages.filter((m) => m.index < before);
+        const page = eligible.slice(-limit);
+        const oldestIndex = page.length > 0 ? page[0].index : 0;
+        const hasMore = eligible.length > page.length;
+        return {
+            messages: page,
+            tasks,
+            totalMessages: allMessages.length,
+            hasMore,
+            oldestIndex,
+        };
+    }
+    async listSessions(cwd) {
+        const { listSessionHistory, listAllSessionHistory } = await import("../session-history.js");
+        const history = await (cwd ? listSessionHistory(cwd) : listAllSessionHistory());
+        return history.map((h) => ({
+            id: h.id,
+            slug: h.slug,
+            summary: h.summary,
+            cwd: h.cwd,
+            lastModified: h.lastModified.toISOString(),
+            createdAt: h.createdAt.toISOString(),
+        }));
     }
     async getSessionFilePath(sessionId) {
         const { findSessionFile } = await import("../session-history.js");

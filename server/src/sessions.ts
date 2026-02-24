@@ -78,10 +78,10 @@ export function listSessions(): SessionSummaryDTO[] {
 export async function listSessionsWithHistory(cwd?: string): Promise<SessionSummaryDTO[]> {
   const liveSessions = listSessions();
 
-  const { listSessionHistory, listAllSessionHistory } = await import("./session-history.js");
-  let history: Awaited<ReturnType<typeof listAllSessionHistory>>;
+  let history: import("./providers/types.js").SessionListItem[];
   try {
-    history = await (cwd ? listSessionHistory(cwd) : listAllSessionHistory());
+    const adapter = getProvider("claude");
+    history = await adapter.listSessions(cwd);
   } catch (err) {
     console.warn("Failed to list session history:", err);
     return liveSessions;
@@ -99,7 +99,7 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
     if (histMatch) {
       live.slug = histMatch.slug;
       live.summary = histMatch.summary;
-      live.lastModified = histMatch.lastModified.toISOString();
+      live.lastModified = histMatch.lastModified;
       live.cwd = histMatch.cwd;
     }
   }
@@ -112,8 +112,8 @@ export async function listSessionsWithHistory(cwd?: string): Promise<SessionSumm
     liveSessions.push({
       id: h.id,
       status: "history",
-      createdAt: h.createdAt.toISOString(),
-      lastModified: h.lastModified.toISOString(),
+      createdAt: h.createdAt,
+      lastModified: h.lastModified,
       numTurns: 0,
       totalCostUsd: 0,
       hasPendingApproval: false,

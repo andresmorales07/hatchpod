@@ -1,5 +1,4 @@
 import { open, stat, readFile } from "node:fs/promises";
-import { extractTasks } from "./task-extractor.js";
 /**
  * Tails JSONL session files on disk and broadcasts normalized messages
  * to subscribed WebSocket clients. A single polling interval checks all
@@ -35,7 +34,7 @@ export class SessionWatcher {
                     watched.filePath = filePath;
                 }
             }
-            await this.replayToClient(watched, client, messageLimit);
+            await this.replayToClient(sessionId, watched, client, messageLimit);
             return;
         }
         // Create the entry IMMEDIATELY (before any await) to prevent race
@@ -59,7 +58,7 @@ export class SessionWatcher {
         }
         // Got a file path — update the entry and replay existing content
         watched.filePath = filePath;
-        await this.replayToClient(watched, client, messageLimit);
+        await this.replayToClient(sessionId, watched, client, messageLimit);
     }
     /**
      * Unsubscribe a client from a session.
@@ -180,82 +179,60 @@ export class SessionWatcher {
     }
     // ── Private methods ──
     /**
-     * Replay the full file content to a single client, then send replay_complete.
-     * Updates the watched session's byteOffset and messageIndex to the end of file.
-     * For the first subscriber, this reads the file and sets the offset.
-     * For subsequent subscribers, we re-read from byte 0 up to the current offset
-     * so they get a full replay without interfering with the shared state.
+     * Replay messages to a single client via adapter.getMessages(), then
+     * sync watcher state and send replay_complete.
      */
-    async replayToClient(watched, client, messageLimit) {
+    async replayToClient(sessionId, watched, client, messageLimit) {
         // No file to replay (e.g., test adapter) — just signal replay is done
         if (!watched.filePath) {
             this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
             return;
         }
-        let content;
+        let result;
         try {
-            content = await readFile(watched.filePath, "utf-8");
+            result = await this.adapter.getMessages(sessionId, {
+                limit: messageLimit,
+            });
         }
         catch (err) {
-            if (err.code === "ENOENT") {
-                // File doesn't exist yet — send replay_complete, leave byteOffset at 0
+            if (err instanceof Error && err.name === "SessionNotFound") {
                 this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
                 return;
             }
-            // Non-ENOENT error — send error + replay_complete so the client doesn't hang
             this.send(client, { type: "error", message: "failed to load message history" });
             this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
             throw err;
         }
-        const contentBytes = Buffer.byteLength(content, "utf-8");
-        const lines = content.split("\n");
-        // 1. Normalize ALL lines to get the full message list
-        const allMessages = [];
-        let replayIndex = 0;
-        for (const line of lines) {
-            if (!line.trim())
-                continue;
-            const normalized = this.adapter.normalizeFileLine(line, replayIndex);
-            if (normalized) {
-                allMessages.push(normalized);
-                replayIndex++;
-            }
-        }
-        // 2. Extract task state from the full message set
-        const tasks = extractTasks(allMessages);
-        // 3. Determine which messages to send
-        const totalMessages = allMessages.length;
-        const toSend = messageLimit && messageLimit < totalMessages
-            ? allMessages.slice(-messageLimit)
-            : allMessages;
-        // 4. Send only the selected messages to the client
-        for (const msg of toSend) {
+        // 1. Send messages to the client
+        for (const msg of result.messages) {
             this.send(client, { type: "message", message: msg });
         }
-        // 5. Update shared state to the furthest point we've read.
-        // Only advance — never go backwards (another subscriber may have
-        // already advanced it further via a concurrent replay).
-        if (contentBytes > watched.byteOffset) {
-            watched.byteOffset = contentBytes;
-        }
-        if (replayIndex > watched.messageIndex) {
-            watched.messageIndex = replayIndex;
-        }
-        // Check if the file ends with an incomplete line (no trailing newline on last segment)
-        // Only set lineBuffer for the first subscriber (when it was empty)
-        const lastSegment = lines[lines.length - 1];
-        if (lastSegment && lastSegment.trim() && !content.endsWith("\n")) {
-            if (!watched.lineBuffer) {
-                watched.lineBuffer = lastSegment;
+        // 2. Sync watcher state — advance byteOffset via file stat, messageIndex
+        //    from the adapter's totalMessages count. Only advance, never go backwards.
+        try {
+            const fileStat = await stat(watched.filePath);
+            if (fileStat.size > watched.byteOffset) {
+                watched.byteOffset = fileStat.size;
             }
         }
-        // 6. Send tasks if any non-completed tasks exist
-        if (tasks.length > 0 && tasks.some((t) => t.status !== "completed")) {
-            this.send(client, { type: "tasks", tasks });
+        catch (err) {
+            if (err.code !== "ENOENT")
+                throw err;
         }
-        // 7. Send replay_complete with pagination metadata
-        const oldestIndex = toSend.length > 0 ? toSend[0].index : 0;
-        this.send(client, { type: "replay_complete", totalMessages, oldestIndex });
+        if (result.totalMessages > watched.messageIndex) {
+            watched.messageIndex = result.totalMessages;
+        }
+        watched.lineBuffer = "";
+        // 3. Send tasks if any non-completed tasks exist
+        if (result.tasks.length > 0 && result.tasks.some((t) => t.status !== "completed")) {
+            this.send(client, { type: "tasks", tasks: result.tasks });
+        }
+        // 4. Send replay_complete with pagination metadata
+        this.send(client, {
+            type: "replay_complete",
+            totalMessages: result.totalMessages,
+            oldestIndex: result.oldestIndex,
+        });
     }
     /** Single poll cycle: check all watched sessions for new data. */
     async poll() {

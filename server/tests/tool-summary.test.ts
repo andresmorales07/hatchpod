@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getToolSummary } from "../ui/src/lib/tools";
+import { getToolSummary } from "../src/providers/tool-summary";
 
 describe("getToolSummary", () => {
   describe("file path tools (Read, Write, Edit, NotebookEdit)", () => {

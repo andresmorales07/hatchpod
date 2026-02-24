@@ -5,11 +5,20 @@ export interface TextPart {
   text: string;
 }
 
+export interface ToolSummary {
+  /** Human-readable one-liner shown as the primary label. */
+  description: string;
+  /** Raw command string (Bash only) — rendered as a secondary monospace line. */
+  command?: string;
+}
+
 export interface ToolUsePart {
   type: "tool_use";
   toolUseId: string;
   toolName: string;
   input: unknown;
+  /** Pre-computed summary for display. Populated server-side during normalization. */
+  summary?: ToolSummary;
 }
 
 export interface ToolResultPart {
@@ -71,6 +80,38 @@ export interface SystemEvent {
 
 export type NormalizedMessage = UserMessage | AssistantMessage | SystemEvent;
 
+// ── Task extraction ──
+
+export type TaskStatus = "pending" | "in_progress" | "completed" | "deleted";
+
+export interface ExtractedTask {
+  id: string;
+  subject: string;
+  activeForm?: string;
+  status: TaskStatus;
+}
+
+// ── Paginated message response ──
+
+export interface PaginatedMessages {
+  messages: NormalizedMessage[];
+  tasks: ExtractedTask[];
+  totalMessages: number;
+  hasMore: boolean;
+  oldestIndex: number;
+}
+
+// ── Session listing ──
+
+export interface SessionListItem {
+  id: string;
+  slug: string | null;
+  summary: string | null;
+  cwd: string;
+  lastModified: string;
+  createdAt: string;
+}
+
 // ── Tool approval (provider-agnostic) ──
 
 export interface ToolApprovalRequest {
@@ -120,13 +161,21 @@ export interface ProviderAdapter {
   run(
     options: ProviderSessionOptions,
   ): AsyncGenerator<NormalizedMessage, ProviderSessionResult, undefined>;
-  getSessionHistory?(sessionId: string): Promise<NormalizedMessage[]>;
 
-  // Resolve a session ID to its JSONL file path on disk
+  /** Load all normalized messages for a session from provider storage. */
+  getSessionHistory(sessionId: string): Promise<NormalizedMessage[]>;
+
+  /** Paginated message retrieval with task extraction. */
+  getMessages(sessionId: string, options?: { before?: number; limit?: number }): Promise<PaginatedMessages>;
+
+  /** List historical sessions, optionally filtered by CWD. */
+  listSessions(cwd?: string): Promise<SessionListItem[]>;
+
+  /** Resolve a session ID to its JSONL file path on disk. */
   getSessionFilePath(sessionId: string): Promise<string | null>;
 
-  // Parse a single raw JSONL line into a normalized message.
-  // Returns null for lines that don't produce a visible message.
-  // `index` is the caller-maintained message counter.
+  /** Parse a single raw JSONL line into a normalized message.
+   *  Returns null for lines that don't produce a visible message.
+   *  `index` is the caller-maintained message counter. */
   normalizeFileLine(line: string, index: number): NormalizedMessage | null;
 }

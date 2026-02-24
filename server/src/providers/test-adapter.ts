@@ -4,6 +4,8 @@ import type {
   ProviderSessionOptions,
   ProviderSessionResult,
   NormalizedMessage,
+  PaginatedMessages,
+  SessionListItem,
 } from "./types.js";
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -314,11 +316,26 @@ export class TestAdapter implements ProviderAdapter {
     };
   }
 
+  async getSessionHistory(_sessionId: string): Promise<NormalizedMessage[]> {
+    return [];
+  }
+
+  async getMessages(
+    _sessionId: string,
+    _options?: { before?: number; limit?: number },
+  ): Promise<PaginatedMessages> {
+    return { messages: [], tasks: [], totalMessages: 0, hasMore: false, oldestIndex: 0 };
+  }
+
+  async listSessions(_cwd?: string): Promise<SessionListItem[]> {
+    return [];
+  }
+
   async getSessionFilePath(_sessionId: string): Promise<string | null> {
-    return null; // Test adapter doesn't write to disk
+    return null;
   }
 
   normalizeFileLine(_line: string, _index: number): NormalizedMessage | null {
-    return null; // Test adapter doesn't use file-based messages
+    return null;
   }
 }

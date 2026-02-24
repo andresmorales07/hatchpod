@@ -1,11 +1,9 @@
 import { useState } from "react";
-import type { NormalizedMessage, MessagePart, TextPart, ToolResultPart } from "../types";
+import type { NormalizedMessage, MessagePart, TextPart, ToolResultPart, ToolUsePart } from "@shared/types";
 
 import { Markdown } from "./Markdown";
 import { FileDiffCard } from "./FileDiffCard";
 import { cn } from "@/lib/utils";
-import { getToolSummary } from "@/lib/tools";
-import { cleanMessageText } from "@/lib/message-cleanup";
 import { ChevronDown, Wrench, AlertCircle, Bot } from "lucide-react";
 
 interface Props {
@@ -17,11 +15,11 @@ function ToolCard({
   toolUse,
   toolResult,
 }: {
-  toolUse: { type: "tool_use"; toolUseId: string; toolName: string; input: unknown };
+  toolUse: ToolUsePart;
   toolResult?: ToolResultPart | null;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const summary = getToolSummary(toolUse.toolName, toolUse.input);
+  const summary = toolUse.summary ?? { description: "" };
   const inputJson = JSON.stringify(toolUse.input, null, 2);
   const hasResult = toolResult != null && toolResult.output.length > 0;
   const isError = toolResult?.isError ?? false;
@@ -106,11 +104,10 @@ function renderPart(
 ) {
   switch (part.type) {
     case "text": {
-      const cleaned = cleanMessageText(part.text);
-      if (!cleaned) return null;
+      if (!part.text) return null;
       return (
         <div key={i} className="text-sm leading-relaxed">
-          <Markdown>{cleaned}</Markdown>
+          <Markdown>{part.text}</Markdown>
         </div>
       );
     }
@@ -166,12 +163,10 @@ export function MessageBubble({ message, toolResults }: Props) {
   }
 
   if (message.role === "user") {
-    const text = cleanMessageText(
-      message.parts
-        .filter((p): p is TextPart => p.type === "text")
-        .map((p) => p.text)
-        .join(""),
-    );
+    const text = message.parts
+      .filter((p): p is TextPart => p.type === "text")
+      .map((p) => p.text)
+      .join("");
     if (!text) return null;
 
     if (text.startsWith("/")) {

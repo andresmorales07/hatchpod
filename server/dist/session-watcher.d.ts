@@ -51,11 +51,8 @@ export declare class SessionWatcher {
     /** Stop polling. Call on server shutdown. */
     stop(): void;
     /**
-     * Replay the full file content to a single client, then send replay_complete.
-     * Updates the watched session's byteOffset and messageIndex to the end of file.
-     * For the first subscriber, this reads the file and sets the offset.
-     * For subsequent subscribers, we re-read from byte 0 up to the current offset
-     * so they get a full replay without interfering with the shared state.
+     * Replay messages to a single client via adapter.getMessages(), then
+     * sync watcher state and send replay_complete.
      */
     private replayToClient;
     /** Single poll cycle: check all watched sessions for new data. */

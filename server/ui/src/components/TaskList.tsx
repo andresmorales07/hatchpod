@@ -1,11 +1,11 @@
-import type { TaskItem } from "@/types";
+import type { ExtractedTask } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 interface Props {
-  tasks: TaskItem[];
+  tasks: ExtractedTask[];
 }
 
-const statusIcon: Record<TaskItem["status"], { icon: string; className: string }> = {
+const statusIcon: Record<ExtractedTask["status"], { icon: string; className: string }> = {
   completed: { icon: "✓", className: "text-emerald-400" },
   in_progress: { icon: "●", className: "text-amber-400 animate-pulse" },
   pending: { icon: "○", className: "text-muted-foreground" },

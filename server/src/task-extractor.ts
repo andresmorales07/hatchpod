@@ -1,11 +1,6 @@
-import type { NormalizedMessage } from "./providers/types.js";
+import type { NormalizedMessage, ExtractedTask, TaskStatus } from "./providers/types.js";
 
-export interface ExtractedTask {
-  id: string;
-  subject: string;
-  activeForm?: string;
-  status: string;
-}
+export type { ExtractedTask };
 
 /**
  * Extract task state from an array of normalized messages.
@@ -42,7 +37,7 @@ export function extractTasks(messages: NormalizedMessage[]): ExtractedTask[] {
         const taskId = typeof input.taskId === "string" ? input.taskId : undefined;
         if (taskId && taskMap.has(taskId)) {
           const existing = taskMap.get(taskId)!;
-          if (typeof input.status === "string") existing.status = input.status;
+          if (typeof input.status === "string") existing.status = input.status as TaskStatus;
           if (typeof input.subject === "string") existing.subject = input.subject;
           if (typeof input.activeForm === "string") existing.activeForm = input.activeForm;
         }

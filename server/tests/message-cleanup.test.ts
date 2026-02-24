@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanMessageText, stripSystemTags } from "../ui/src/lib/message-cleanup";
+import { cleanMessageText, stripSystemTags } from "../src/providers/message-cleanup";
 
 describe("stripSystemTags", () => {
   it("strips <system-reminder> blocks", () => {

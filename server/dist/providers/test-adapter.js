@@ -283,10 +283,19 @@ export class TestAdapter {
             numTurns: Math.max(1, index),
         };
     }
+    async getSessionHistory(_sessionId) {
+        return [];
+    }
+    async getMessages(_sessionId, _options) {
+        return { messages: [], tasks: [], totalMessages: 0, hasMore: false, oldestIndex: 0 };
+    }
+    async listSessions(_cwd) {
+        return [];
+    }
     async getSessionFilePath(_sessionId) {
-        return null; // Test adapter doesn't write to disk
+        return null;
     }
     normalizeFileLine(_line, _index) {
-        return null; // Test adapter doesn't use file-based messages
+        return null;
     }
 }

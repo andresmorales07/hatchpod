@@ -1,9 +1,4 @@
-export interface ToolSummary {
-  /** Human-readable one-liner shown as the primary label. */
-  description: string;
-  /** Raw command string (Bash only) — rendered as a secondary monospace line. */
-  command?: string;
-}
+import type { ToolSummary } from "./types.js";
 
 function truncate(s: string, max = 80): string {
   return s.length > max ? s.slice(0, max - 3) + "..." : s;

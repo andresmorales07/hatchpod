@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { PrismLight, oneDark, detectLanguage } from "@/lib/syntax";
 import { cn } from "@/lib/utils";
-import { getToolSummary } from "@/lib/tools";
 import { ChevronDown, FileEdit, FilePlus, AlertCircle } from "lucide-react";
-import type { ToolResultPart } from "../types";
+import type { ToolResultPart, ToolUsePart } from "@shared/types";
 
 interface EditInput {
   file_path: string;
@@ -18,12 +17,7 @@ interface WriteInput {
 }
 
 interface Props {
-  toolUse: {
-    type: "tool_use";
-    toolUseId: string;
-    toolName: string;
-    input: unknown;
-  };
+  toolUse: ToolUsePart;
   toolResult?: ToolResultPart | null;
 }
 
@@ -125,7 +119,7 @@ export function FileDiffCard({ toolUse, toolResult }: Props) {
   const basename = filePath.split("/").pop() ?? filePath;
   const language = detectLanguage(filePath);
   const isError = toolResult?.isError ?? false;
-  const summary = getToolSummary(toolUse.toolName, toolUse.input).description;
+  const summary = toolUse.summary?.description ?? "";
 
   // Edit-specific data
   const editInput = isEdit ? (input as EditInput) : null;

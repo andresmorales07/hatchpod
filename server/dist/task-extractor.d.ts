@@ -1,10 +1,5 @@
-import type { NormalizedMessage } from "./providers/types.js";
-export interface ExtractedTask {
-    id: string;
-    subject: string;
-    activeForm?: string;
-    status: string;
-}
+import type { NormalizedMessage, ExtractedTask } from "./providers/types.js";
+export type { ExtractedTask };
 /**
  * Extract task state from an array of normalized messages.
  * Mirrors the client-side logic in ChatPage.tsx — scans tool_use/tool_result

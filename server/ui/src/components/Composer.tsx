@@ -3,7 +3,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { SlashCommandDropdown, getFilteredCommands } from "./SlashCommandDropdown";
 import { Button } from "@/components/ui/button";
 import { Send, Square } from "lucide-react";
-import type { SlashCommand } from "../types";
+import type { SlashCommand } from "@shared/types";
 
 interface Props {
   slashCommands: SlashCommand[];
