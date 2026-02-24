@@ -69,12 +69,21 @@ Two Docker volumes persist state across container restarts:
 │   │   ├── session-history.ts # CLI session history reader
 │   │   ├── session-watcher.ts # Session file watcher (JSONL → WS)
 │   │   ├── sessions.ts     # Session manager (provider-agnostic)
-│   │   ├── routes.ts       # REST route handlers (sessions, browse, history)
+│   │   ├── routes.ts       # REST route handlers (sessions, browse, history, OpenAPI docs)
 │   │   ├── ws.ts           # WebSocket handler
-│   │   ├── types.ts        # Shared TypeScript interfaces
+│   │   ├── types.ts        # Shared TypeScript interfaces (re-exports serializable types from schemas/)
 │   │   ├── task-extractor.ts  # Server-side task extraction from messages
+│   │   ├── schemas/        # Zod schemas — single source of truth for API types + validation
+│   │   │   ├── common.ts   # Shared primitives (UuidSchema, ErrorResponseSchema, isPathContained)
+│   │   │   ├── providers.ts # Message parts, NormalizedMessage, tasks, session listing
+│   │   │   ├── sessions.ts # SessionStatus, CreateSessionRequest, SessionSummaryDTO
+│   │   │   ├── browse.ts   # BrowseResponse
+│   │   │   ├── config.ts   # ConfigResponse, ProviderInfo
+│   │   │   ├── health.ts   # HealthResponse
+│   │   │   ├── registry.ts # OpenAPI 3.1 document assembly (all paths + security)
+│   │   │   └── index.ts    # Barrel export of all schemas and inferred types
 │   │   └── providers/      # Provider abstraction layer
-│   │       ├── types.ts    # NormalizedMessage, ProviderAdapter interface
+│   │       ├── types.ts    # Re-exports serializable types from schemas/; ProviderAdapter interface
 │   │       ├── claude-adapter.ts  # Claude SDK adapter (sole SDK import)
 │   │       ├── test-adapter.ts    # Test/mock adapter for development
 │   │       ├── message-cleanup.ts # Message text cleanup utilities
@@ -126,7 +135,7 @@ Two Docker volumes persist state across container restarts:
 │                   ├── input.tsx
 │                   ├── scroll-area.tsx
 │                   └── tooltip.tsx
-├── server/tests/               # Vitest unit tests (21 test files + helpers.ts)
+├── server/tests/               # Vitest unit tests (23 test files + helpers.ts)
 └── rootfs/                 # Files copied into the container at /
     └── etc/
         ├── ssh/sshd_config
@@ -250,6 +259,8 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 - Tailscale and dotfiles are opt-in features controlled by env vars (`TS_AUTHKEY`, `DOTFILES_REPO`)
 - `docker-compose.yml` includes `cap_add: NET_ADMIN` and `/dev/net/tun` device for Tailscale kernel TUN mode; harmless when Tailscale is not enabled
 - The Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) must only be imported in `server/src/providers/claude-adapter.ts`. All other server and UI code uses the normalized `NormalizedMessage` / `ProviderAdapter` types from `providers/types.ts`. The WebSocket protocol sends `{ type: "message" }` events with normalized payloads.
+- **Zod schemas are the single source of truth** for all serializable API types. Define new request/response types in `server/src/schemas/`, then re-export the `z.infer<>` types from `providers/types.ts` or `types.ts`. Non-serializable types (containing functions, AbortController, Set, callbacks) stay as manual interfaces. Register new endpoints in `schemas/registry.ts` to keep the OpenAPI spec in sync.
+- **API docs** are served at `/api/docs` (Scalar UI, CDN) and `/api/openapi.json` (OpenAPI 3.1 spec). Both are unauthenticated, like `/healthz`.
 - `server/dist/` is tracked in git. After modifying any file under `server/src/`, rebuild with `cd server && npm run build` and commit the updated `server/dist/` files alongside the source changes.
 - **ESLint** is configured in both `server/` and `server/ui/` using ESLint v9 flat config with typescript-eslint. Run `npm run lint` to check and `npm run lint:fix` to auto-fix. The UI config includes `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`.
 - **Future-proof implementations over workarounds** — Always prefer the architecturally correct, future-proof approach even when it's more complex. Do not suggest a simpler workaround just because the proper solution requires more effort. This project has zero users, so breaking changes are free — leverage this to iterate toward the right architecture without backwards-compatibility constraints.

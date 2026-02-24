@@ -106,6 +106,9 @@ Mobile-friendly web interface for Claude Code. Works on phones, tablets, and des
 # Web UI
 open http://localhost:8080
 
+# API docs (interactive, no auth required)
+open http://localhost:8080/api/docs
+
 # REST API
 curl -H "Authorization: Bearer $API_PASSWORD" http://localhost:8080/api/sessions
 
@@ -114,9 +117,12 @@ curl -X POST -H "Authorization: Bearer $API_PASSWORD" \
      -H "Content-Type: application/json" \
      -d '{"prompt":"What files are in the workspace?"}' \
      http://localhost:8080/api/sessions
+
+# OpenAPI spec
+curl http://localhost:8080/api/openapi.json
 ```
 
-API endpoints: `GET /healthz`, `POST /api/sessions`, `GET /api/sessions`, `GET /api/sessions/:id`, `DELETE /api/sessions/:id`. WebSocket streaming at `WS /api/sessions/:id/stream?token=<password>`.
+API endpoints: `GET /healthz`, `GET /api/openapi.json`, `GET /api/docs`, `POST /api/sessions`, `GET /api/sessions`, `GET /api/sessions/:id`, `DELETE /api/sessions/:id`, `GET /api/sessions/:id/history`, `GET /api/sessions/:id/messages`, `GET /api/browse`, `GET /api/config`, `GET /api/providers`. WebSocket streaming at `WS /api/sessions/:id/stream`.
 
 ### Mosh (UDP 60000-60003)
 
