@@ -110,7 +110,7 @@ function DiffSection({
 }
 
 export function FileDiffCard({ toolUse, toolResult }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
   const isEdit = toolUse.toolName === "Edit";
