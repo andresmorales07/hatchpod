@@ -22,3 +22,6 @@ server/ui/node_modules/
 
 # Worktrees
 .worktrees/
+
+# Serena
+.serena/
