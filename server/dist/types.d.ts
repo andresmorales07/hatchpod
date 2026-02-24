@@ -1,5 +1,7 @@
-import type { NormalizedMessage, PermissionModeCommon, ApprovalDecision, SlashCommand } from "./providers/types.js";
-export type SessionStatus = "idle" | "starting" | "running" | "waiting_for_approval" | "completed" | "interrupted" | "error" | "history";
+import type { NormalizedMessage, PermissionModeCommon, SlashCommand } from "./providers/types.js";
+import type { ApprovalDecision } from "./providers/types.js";
+export type { SessionStatus, CreateSessionRequest, SessionSummaryDTO } from "./schemas/sessions.js";
+import type { SessionStatus } from "./schemas/sessions.js";
 /**
  * Runtime handle for API-driven sessions only.
  * No message storage — messages come from JSONL via SessionWatcher.
@@ -20,20 +22,6 @@ export interface ActiveSession {
     /** The initial prompt text, stored so ws.ts can send it as a synthetic
      *  user message when a client connects before the JSONL file is available. */
     initialPrompt: string | null;
-}
-/** Summary returned by GET /api/sessions (list endpoint). */
-export interface SessionSummaryDTO {
-    id: string;
-    status: SessionStatus;
-    createdAt: string;
-    lastModified: string;
-    numTurns: number;
-    totalCostUsd: number;
-    hasPendingApproval: boolean;
-    provider: string;
-    slug: string | null;
-    summary: string | null;
-    cwd: string;
 }
 export interface PendingApproval {
     toolName: string;
@@ -96,12 +84,3 @@ export type ServerMessage = {
     type: "error";
     message: string;
 };
-export interface CreateSessionRequest {
-    prompt?: string;
-    permissionMode?: PermissionModeCommon;
-    provider?: string;
-    model?: string;
-    cwd?: string;
-    allowedTools?: string[];
-    resumeSessionId?: string;
-}

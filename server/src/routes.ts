@@ -10,20 +10,29 @@ import {
   deleteSession,
 } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
-import type { CreateSessionRequest } from "./types.js";
-
+import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument } from "./schemas/index.js";
 
 const startTime = Date.now();
 
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 const SESSION_HISTORY_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/history$/;
 const SESSION_MESSAGES_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/messages$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
 const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
-// Must match PermissionModeCommon from providers/types.ts (minus "bypassPermissions" which is gated separately)
-const VALID_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "delegate", "dontAsk"]);
+
+const SCALAR_HTML = `<!doctype html>
+<html>
+<head>
+  <title>Hatchpod API Docs</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <script id="api-reference" data-url="/api/openapi.json"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>`;
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -70,7 +79,29 @@ export async function handleRequest(
     return;
   }
 
-  // All /api/* routes require auth
+  // OpenAPI spec — no auth required
+  if (pathname === "/api/openapi.json" && method === "GET") {
+    json(res, 200, openApiDocument);
+    return;
+  }
+
+  // API docs UI (Scalar) — no auth required
+  if (pathname === "/api/docs" && method === "GET") {
+    // Override CSP to allow Scalar CDN resources
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+      "img-src 'self' data: https://cdn.jsdelivr.net; " +
+      "font-src 'self' https://cdn.jsdelivr.net; " +
+      "connect-src 'self'; frame-ancestors 'none'",
+    );
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(SCALAR_HTML);
+    return;
+  }
+
+  // All other /api/* routes require auth
   if (pathname.startsWith("/api/")) {
     const authResult = authenticateRequest(req);
     if (authResult === "rate_limited") {
@@ -85,15 +116,14 @@ export async function handleRequest(
 
   // POST /api/sessions — create session
   if (pathname === "/api/sessions" && method === "POST") {
-    let parsed: CreateSessionRequest;
+    let raw: unknown;
     try {
       const body = await readBody(req);
-      const raw = JSON.parse(body);
+      raw = JSON.parse(body);
       if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
         json(res, 400, { error: "invalid request body" });
         return;
       }
-      parsed = raw as CreateSessionRequest;
     } catch (err) {
       const msg = err instanceof Error && err.message === "request body too large"
         ? "request body too large"
@@ -101,43 +131,29 @@ export async function handleRequest(
       json(res, 400, { error: msg });
       return;
     }
-    if (parsed.prompt !== undefined && typeof parsed.prompt !== "string") {
-      json(res, 400, { error: "prompt must be a string" });
+
+    // Validate with Zod schema (handles type checks, enum validation, UUID format, null bytes)
+    const result = CreateSessionRequestSchema.safeParse(raw);
+    if (!result.success) {
+      const firstIssue = result.error.issues[0];
+      json(res, 400, { error: firstIssue.message });
       return;
     }
-    // Validate permissionMode
-    if (parsed.permissionMode !== undefined) {
-      if (parsed.permissionMode === "bypassPermissions" && !ALLOW_BYPASS_PERMISSIONS) {
-        json(res, 403, { error: "bypassPermissions is disabled; set ALLOW_BYPASS_PERMISSIONS=1 to enable" });
-        return;
-      }
-      if (parsed.permissionMode !== "bypassPermissions" && !VALID_PERMISSION_MODES.has(parsed.permissionMode)) {
-        json(res, 400, { error: "invalid permissionMode" });
-        return;
-      }
+    const parsed = result.data;
+
+    // Imperative checks that depend on runtime config (not expressible in a static schema)
+    if (parsed.permissionMode === "bypassPermissions" && !ALLOW_BYPASS_PERMISSIONS) {
+      json(res, 403, { error: "bypassPermissions is disabled; set ALLOW_BYPASS_PERMISSIONS=1 to enable" });
+      return;
     }
-    // Validate resumeSessionId is a UUID
-    if (parsed.resumeSessionId !== undefined) {
-      if (typeof parsed.resumeSessionId !== "string" || !UUID_RE.test(parsed.resumeSessionId)) {
-        json(res, 400, { error: "resumeSessionId must be a valid UUID" });
-        return;
-      }
+    if (parsed.cwd !== undefined && !isPathContained(BROWSE_ROOT, parsed.cwd)) {
+      json(res, 400, { error: "cwd must be within the workspace" });
+      return;
     }
-    // Validate cwd is under BROWSE_ROOT
-    if (parsed.cwd !== undefined) {
-      if (typeof parsed.cwd !== "string" || parsed.cwd.includes("\0")) {
-        json(res, 400, { error: "invalid cwd" });
-        return;
-      }
-      const absCwd = resolve(BROWSE_ROOT, parsed.cwd);
-      if (absCwd !== BROWSE_ROOT && !absCwd.startsWith(BROWSE_ROOT + "/")) {
-        json(res, 400, { error: "cwd must be within the workspace" });
-        return;
-      }
-    }
+
     try {
-      const result = await createSession(parsed);
-      json(res, 201, { id: result.id, status: result.status });
+      const sessionResult = await createSession(parsed);
+      json(res, 201, { id: sessionResult.id, status: sessionResult.status });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("maximum session limit")) {
@@ -158,8 +174,7 @@ export async function handleRequest(
         json(res, 400, { error: "invalid cwd" });
         return;
       }
-      const absCwd = resolve(BROWSE_ROOT, cwd);
-      if (absCwd !== BROWSE_ROOT && !absCwd.startsWith(BROWSE_ROOT + "/")) {
+      if (!isPathContained(BROWSE_ROOT, cwd)) {
         json(res, 400, { error: "cwd must be within the workspace" });
         return;
       }
@@ -178,7 +193,7 @@ export async function handleRequest(
   const historyMatch = pathname.match(SESSION_HISTORY_RE);
   if (historyMatch && method === "GET") {
     const sessionId = historyMatch[1];
-    if (!UUID_RE.test(sessionId)) {
+    if (!UuidSchema.safeParse(sessionId).success) {
       json(res, 400, { error: "invalid session ID" });
       return;
     }
@@ -209,7 +224,7 @@ export async function handleRequest(
   const messagesMatch = pathname.match(SESSION_MESSAGES_RE);
   if (messagesMatch && method === "GET") {
     const sessionId = messagesMatch[1];
-    if (!UUID_RE.test(sessionId)) {
+    if (!UuidSchema.safeParse(sessionId).success) {
       json(res, 400, { error: "invalid session ID" });
       return;
     }
@@ -296,16 +311,12 @@ export async function handleRequest(
   if (pathname === "/api/browse" && method === "GET") {
     const relPath = url.searchParams.get("path") ?? "";
 
-    if (relPath.includes("\0")) {
+    if (relPath.includes("\0") || !isPathContained(BROWSE_ROOT, relPath)) {
       json(res, 400, { error: "invalid path" });
       return;
     }
 
     const absPath = resolve(BROWSE_ROOT, relPath);
-    if (absPath !== BROWSE_ROOT && !absPath.startsWith(BROWSE_ROOT + "/")) {
-      json(res, 400, { error: "invalid path" });
-      return;
-    }
 
     try {
       const entries = await readdir(absPath, { withFileTypes: true });
