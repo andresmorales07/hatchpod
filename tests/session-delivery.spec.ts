@@ -526,6 +526,50 @@ test.describe('session delivery pipeline', () => {
     }
   });
 
+  test('message indices remain contiguous across follow-up', async () => {
+    const sessionId = await createTestSession('First turn');
+    const conn = await connectWs(sessionId);
+
+    try {
+      // Wait for first run to complete
+      await conn.waitFor((msgs) => hasStatus(msgs, 'completed'));
+
+      // Collect indices from first run
+      const firstRunIndices = conn.messages
+        .filter((m) => m.type === 'message')
+        .map((m) => (m.message as { index: number }).index);
+
+      expect(firstRunIndices.length).toBeGreaterThanOrEqual(2);
+      expect(firstRunIndices[0]).toBe(0);
+
+      // Send follow-up
+      conn.ws.send(JSON.stringify({ type: 'prompt', text: 'Second turn' }));
+
+      // Wait for second completion
+      await conn.waitFor((msgs) => {
+        const completedCount = msgs.filter(
+          (m) => m.type === 'status' && m.status === 'completed',
+        ).length;
+        return completedCount >= 2;
+      });
+
+      // Collect ALL indices across both runs
+      const allIndices = conn.messages
+        .filter((m) => m.type === 'message')
+        .map((m) => (m.message as { index: number }).index);
+
+      // Indices must be strictly contiguous: 0, 1, 2, 3, ...
+      for (let i = 0; i < allIndices.length; i++) {
+        expect(allIndices[i]).toBe(i);
+      }
+
+      // Second run should have added at least 2 messages (user prompt + echo)
+      expect(allIndices.length).toBeGreaterThan(firstRunIndices.length);
+    } finally {
+      conn.close();
+    }
+  });
+
   test('error scenario delivers error status', async () => {
     const sessionId = await createTestSession('[error] crash test');
     const conn = await connectWs(sessionId);

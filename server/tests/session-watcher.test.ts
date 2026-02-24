@@ -361,6 +361,16 @@ describe("SessionWatcher", () => {
       watcher.stop();
     });
 
+    it("no-ops for nonexistent session without throwing", () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      // Should not throw
+      watcher.pushEvent("nonexistent", { type: "status", status: "completed" });
+      watcher.stop();
+    });
+
     it("works regardless of mode", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
@@ -458,6 +468,48 @@ describe("SessionWatcher", () => {
       watcher.stop();
     });
 
+    it("skips pre-existing file data written during push mode", async () => {
+      const sessionId = "sess-skip-existing";
+      const filePath = join(subDir, `${sessionId}.jsonl`);
+      // File has data that was written by the SDK during push mode
+      await writeFile(filePath, jsonlLine("pushed-via-sdk-1") + jsonlLine("pushed-via-sdk-2"));
+
+      const fileMap = new Map([[sessionId, filePath]]);
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+      watcher.start(50);
+
+      // Start in push mode with messages already in memory
+      watcher.setMode(sessionId, "push");
+      watcher.pushMessage(sessionId, { role: "user", parts: [{ type: "text", text: "hello" }], index: 0 });
+      watcher.pushMessage(sessionId, { role: "assistant", parts: [{ type: "text", text: "world" }], index: 0 });
+
+      // Transition to poll — should advance byteOffset to EOF
+      await watcher.transitionToPoll(sessionId);
+
+      // Subscribe a client — should get in-memory messages only
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const replayed = parseMessages(sent);
+      expect(replayed).toHaveLength(2);
+      expect((replayed[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("hello");
+      expect((replayed[1] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("world");
+
+      // Now append NEW data after the transition — only this should be polled
+      sent.length = 0;
+      await appendFile(filePath, jsonlLine("new-after-transition"));
+      await delay(200);
+
+      const polledMsgs = parseMessages(sent);
+      expect(polledMsgs).toHaveLength(1);
+      expect((polledMsgs[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("new-after-transition");
+      // Index should continue from in-memory messages (0, 1 → next is 2)
+      expect(polledMsgs[0].index).toBe(2);
+
+      watcher.stop();
+    });
+
     it("handles nonexistent session gracefully", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
@@ -470,6 +522,30 @@ describe("SessionWatcher", () => {
   });
 
   describe("polling — broadcast new lines", () => {
+    it("subscribe defaults to poll mode so CLI sessions get live updates", async () => {
+      const sessionId = "sess-default-poll";
+      const filePath = join(subDir, `${sessionId}.jsonl`);
+      await writeFile(filePath, "");
+
+      const fileMap = new Map([[sessionId, filePath]]);
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+      watcher.start(50);
+
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+      sent.length = 0;
+
+      // Append data — should be picked up automatically (poll mode is the default)
+      await appendFile(filePath, jsonlLine("live-update"));
+      await delay(200);
+
+      expect(parseMessages(sent)).toHaveLength(1);
+      expect((parseMessages(sent)[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("live-update");
+
+      watcher.stop();
+    });
+
     it("broadcasts new lines after subscribe when in poll mode", async () => {
       const sessionId = "sess-live";
       const filePath = join(subDir, `${sessionId}.jsonl`);
@@ -488,10 +564,7 @@ describe("SessionWatcher", () => {
       expect(replayMessages).toHaveLength(1);
       expect((replayMessages[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("initial");
 
-      // Set mode to poll (session starts in idle mode after subscribe)
-      watcher.setMode(sessionId, "poll");
-
-      // Clear sent and append new lines
+      // Session defaults to poll mode after subscribe — clear and append new lines
       sent.length = 0;
       await appendFile(filePath, jsonlLine("update-1") + jsonlLine("update-2"));
 
@@ -543,7 +616,7 @@ describe("SessionWatcher", () => {
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
+      // subscribe defaults to poll mode — no need to set explicitly
       sent.length = 0;
 
       // Write a partial line (no newline terminator)
@@ -580,7 +653,7 @@ describe("SessionWatcher", () => {
       const client2 = createMockWs();
       await watcher.subscribe(sessionId, client1.ws as unknown as import("ws").WebSocket);
       await watcher.subscribe(sessionId, client2.ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
+      // subscribe defaults to poll mode
 
       // Clear replay data
       client1.sent.length = 0;
@@ -609,10 +682,9 @@ describe("SessionWatcher", () => {
       const watcher = new SessionWatcher(adapter);
       watcher.start(50);
 
-      // First client connects and receives replay
+      // First client connects and receives replay (subscribe defaults to poll mode)
       const client1 = createMockWs();
       await watcher.subscribe(sessionId, client1.ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
 
       // Poll picks up new data
       await appendFile(filePath, jsonlLine("polled"));
@@ -651,18 +723,20 @@ describe("SessionWatcher", () => {
       // Entry preserved because it has messages from replay
       expect(watcher.watchedCount).toBe(1);
 
-      // Append data after unsub — should NOT be delivered (no clients)
+      // Append data after unsub — not delivered to disconnected client
       sent.length = 0;
       await appendFile(filePath, jsonlLine("after-unsub"));
       await delay(200);
       expect(parseMessages(sent)).toHaveLength(0);
 
-      // But reconnecting should replay from memory
+      // But reconnecting should replay ALL stored messages — both the original
+      // replay and data polled while no clients were connected
       const client2 = createMockWs();
       await watcher.subscribe(sessionId, client2.ws as unknown as import("ws").WebSocket);
       const replayed = parseMessages(client2.sent);
-      expect(replayed).toHaveLength(1);
+      expect(replayed).toHaveLength(2);
       expect((replayed[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("line1");
+      expect((replayed[1] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("after-unsub");
 
       watcher.stop();
     });
@@ -696,7 +770,7 @@ describe("SessionWatcher", () => {
       const client2 = createMockWs();
       await watcher.subscribe(sessionId, client1.ws as unknown as import("ws").WebSocket);
       await watcher.subscribe(sessionId, client2.ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
+      // subscribe defaults to poll mode
       expect(watcher.watchedCount).toBe(1);
 
       // Unsub client1 — client2 still subscribed
@@ -709,6 +783,121 @@ describe("SessionWatcher", () => {
       await delay(200);
 
       expect(parseMessages(client2.sent)).toHaveLength(1);
+
+      watcher.stop();
+    });
+  });
+
+  describe("remap", () => {
+    it("returns true on successful remap", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      watcher.setMode("old-id", "push");
+      const result = watcher.remap("old-id", "new-id");
+      expect(result).toBe(true);
+      expect(watcher.watchedCount).toBe(1);
+
+      // Push to new ID should work
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe("new-id", ws as unknown as import("ws").WebSocket);
+      sent.length = 0;
+      watcher.pushMessage("new-id", { role: "assistant", parts: [{ type: "text", text: "test" }], index: 0 });
+      expect(parseMessages(sent)).toHaveLength(1);
+
+      watcher.stop();
+    });
+
+    it("returns false when old session does not exist", () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const result = watcher.remap("nonexistent", "new-id");
+      expect(result).toBe(false);
+      expect(watcher.watchedCount).toBe(0);
+
+      watcher.stop();
+    });
+  });
+
+  describe("forceRemove", () => {
+    it("removes session entry regardless of messages", async () => {
+      const sessionId = "sess-force";
+      const filePath = join(subDir, `${sessionId}.jsonl`);
+      await writeFile(filePath, jsonlLine("data"));
+
+      const fileMap = new Map([[sessionId, filePath]]);
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const { ws } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+      expect(watcher.watchedCount).toBe(1);
+
+      // Unsubscribe — entry preserved because it has messages
+      watcher.unsubscribe(sessionId, ws as unknown as import("ws").WebSocket);
+      expect(watcher.watchedCount).toBe(1);
+
+      // forceRemove — entry deleted regardless
+      watcher.forceRemove(sessionId);
+      expect(watcher.watchedCount).toBe(0);
+
+      watcher.stop();
+    });
+
+    it("no-ops for nonexistent session", () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      // Should not throw
+      watcher.forceRemove("nonexistent");
+      expect(watcher.watchedCount).toBe(0);
+
+      watcher.stop();
+    });
+  });
+
+  describe("contiguous indices across mode transitions", () => {
+    it("maintains contiguous indices across push → poll → push (follow-up)", async () => {
+      const sessionId = "sess-followup-idx";
+      const filePath = join(subDir, `${sessionId}.jsonl`);
+      await writeFile(filePath, "");
+
+      const fileMap = new Map([[sessionId, filePath]]);
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+      watcher.start(50);
+
+      // First run: push mode
+      watcher.setMode(sessionId, "push");
+      watcher.pushMessage(sessionId, { role: "user", parts: [{ type: "text", text: "first" }], index: 0 });
+      watcher.pushMessage(sessionId, { role: "assistant", parts: [{ type: "text", text: "response-1" }], index: 0 });
+      // Indices should be 0, 1
+
+      // Complete and transition to poll
+      await watcher.transitionToPoll(sessionId);
+
+      // Follow-up: switch back to push
+      watcher.setMode(sessionId, "push");
+      watcher.pushMessage(sessionId, { role: "user", parts: [{ type: "text", text: "follow-up" }], index: 0 });
+      watcher.pushMessage(sessionId, { role: "assistant", parts: [{ type: "text", text: "response-2" }], index: 0 });
+      // Indices should continue at 2, 3
+
+      // Subscribe a client — should see all 4 messages with contiguous indices
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const messages = parseMessages(sent);
+      expect(messages).toHaveLength(4);
+      expect(messages[0].index).toBe(0);
+      expect(messages[1].index).toBe(1);
+      expect(messages[2].index).toBe(2);
+      expect(messages[3].index).toBe(3);
+      expect((messages[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("first");
+      expect((messages[2] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("follow-up");
 
       watcher.stop();
     });
@@ -747,7 +936,7 @@ describe("SessionWatcher", () => {
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
+      // subscribe defaults to poll mode
 
       // Should get replay_complete (no messages, file doesn't exist)
       expect(hasReplayComplete(sent)).toBe(true);
@@ -778,7 +967,7 @@ describe("SessionWatcher", () => {
       const client2 = createMockWs();
       await watcher.subscribe(sessionId, client1.ws as unknown as import("ws").WebSocket);
       await watcher.subscribe(sessionId, client2.ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
+      // subscribe defaults to poll mode
 
       // Simulate client1 closing
       client1.ws.readyState = 3; // CLOSED
@@ -808,7 +997,7 @@ describe("SessionWatcher", () => {
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
-      watcher.setMode(sessionId, "poll");
+      // subscribe defaults to poll mode
 
       // Replay: indices 0, 1
       const replayMsgs = parseMessages(sent);

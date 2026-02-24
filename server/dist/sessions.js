@@ -16,6 +16,8 @@ setInterval(() => {
         if ((s.status === "completed" || s.status === "error" || s.status === "interrupted") &&
             now - s.createdAt.getTime() > SESSION_TTL_MS) {
             sessions.delete(id);
+            // Also clean up watcher entries to prevent unbounded memory growth
+            watcher?.forceRemove(id);
         }
     }
     // Clean up stale aliases whose targets no longer exist
@@ -161,6 +163,8 @@ export async function createSession(req) {
 async function runSession(session, prompt, permissionMode, model, allowedTools, resumeSessionId) {
     if (!watcher) {
         console.error(`runSession(${session.sessionId}): watcher not initialized`);
+        session.status = "error";
+        session.lastError = "Internal error: message delivery system not initialized";
         return;
     }
     try {
@@ -270,7 +274,9 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
         try {
             await watcher.transitionToPoll(session.sessionId);
         }
-        catch { /* best-effort on error path */ }
+        catch (pollErr) {
+            console.warn(`runSession(${session.sessionId}): failed to transition to poll on error path:`, pollErr);
+        }
         const currentStatus = session.status;
         const isAbortError = session.abortController.signal.aborted;
         if (currentStatus === "interrupted" && isAbortError) {
@@ -298,7 +304,12 @@ export function interruptSession(id) {
         return false;
     session.status = "interrupted";
     session.abortController.abort();
-    watcher?.pushEvent(session.sessionId, { type: "status", status: "interrupted" });
+    if (watcher) {
+        watcher.pushEvent(session.sessionId, { type: "status", status: "interrupted" });
+    }
+    else {
+        console.error(`interruptSession(${id}): watcher not initialized — status update not sent`);
+    }
     return true;
 }
 export function clearSessions() {
@@ -328,7 +339,12 @@ export function handleApproval(session, toolUseId, allow, message, answers, alwa
     const approval = session.pendingApproval;
     session.pendingApproval = null;
     session.status = "running";
-    watcher?.pushEvent(session.sessionId, { type: "status", status: "running" });
+    if (watcher) {
+        watcher.pushEvent(session.sessionId, { type: "status", status: "running" });
+    }
+    else {
+        console.error(`handleApproval(${session.sessionId}): watcher not initialized — status update not sent`);
+    }
     if (allow) {
         if (alwaysAllow) {
             session.alwaysAllowedTools.add(approval.toolName);

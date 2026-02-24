@@ -43,7 +43,12 @@ export declare class SessionWatcher {
      * Remap a session from one ID to another. Moves all subscribers
      * so broadcasts under the new ID reach existing clients.
      */
-    remap(oldId: string, newId: string): void;
+    remap(oldId: string, newId: string): boolean;
+    /**
+     * Forcefully remove a session entry regardless of messages or clients.
+     * Called during TTL eviction to prevent unbounded memory growth.
+     */
+    forceRemove(sessionId: string): void;
     /**
      * Push a message into a session's in-memory store and broadcast to all
      * subscribed clients. The message index is derived from `messages.length`

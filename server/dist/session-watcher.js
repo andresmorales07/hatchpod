@@ -49,10 +49,12 @@ export class SessionWatcher {
         }
         // Create the entry IMMEDIATELY (before any await) to prevent race
         // conditions when multiple clients subscribe concurrently.
+        // Default to "poll" mode so CLI/history sessions get live JSONL updates.
+        // API sessions override this immediately via setMode("push") in runSession().
         watched = {
             messages: [],
             clients: new Set([client]),
-            mode: "idle",
+            mode: "poll",
             filePath: null,
             byteOffset: 0,
             lineBuffer: "",
@@ -101,10 +103,20 @@ export class SessionWatcher {
      */
     remap(oldId, newId) {
         const watched = this.sessions.get(oldId);
-        if (!watched)
-            return;
+        if (!watched) {
+            console.warn(`SessionWatcher.remap(${oldId} → ${newId}): old session not found`);
+            return false;
+        }
         this.sessions.delete(oldId);
         this.sessions.set(newId, watched);
+        return true;
+    }
+    /**
+     * Forcefully remove a session entry regardless of messages or clients.
+     * Called during TTL eviction to prevent unbounded memory growth.
+     */
+    forceRemove(sessionId) {
+        this.sessions.delete(sessionId);
     }
     // ── Message production ──
     /**
@@ -117,8 +129,12 @@ export class SessionWatcher {
      */
     pushMessage(sessionId, message) {
         const watched = this.sessions.get(sessionId);
-        if (!watched || watched.mode !== "push")
+        if (!watched)
             return;
+        if (watched.mode !== "push") {
+            console.warn(`SessionWatcher.pushMessage(${sessionId}): dropped — mode is "${watched.mode}", expected "push"`);
+            return;
+        }
         const indexed = { ...message, index: watched.messages.length };
         watched.messages.push(indexed);
         this.broadcast(watched, { type: "message", message: indexed });
@@ -130,8 +146,12 @@ export class SessionWatcher {
      */
     pushEvent(sessionId, event) {
         const watched = this.sessions.get(sessionId);
-        if (!watched)
+        if (!watched) {
+            if ("status" in event) {
+                console.warn(`SessionWatcher.pushEvent(${sessionId}): status "${event.status}" dropped — session not tracked`);
+            }
             return;
+        }
         this.broadcast(watched, event);
     }
     /**
@@ -165,8 +185,10 @@ export class SessionWatcher {
      */
     async transitionToPoll(sessionId) {
         const watched = this.sessions.get(sessionId);
-        if (!watched)
+        if (!watched) {
+            console.warn(`SessionWatcher.transitionToPoll(${sessionId}): session not tracked — skipping`);
             return;
+        }
         // Resolve file path if needed
         if (!watched.filePath) {
             const filePath = await this.adapter.getSessionFilePath(sessionId);
