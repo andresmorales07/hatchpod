@@ -155,10 +155,17 @@ export class ClaudeAdapter {
                                 input,
                             });
                             if (decision.allow) {
+                                // ExitPlanMode and EnterPlanMode need updatedPermissions
+                                // (containing setMode transitions) even without alwaysAllow,
+                                // otherwise the SDK clears context and restarts the query
+                                // as a new session instead of continuing in-place.
+                                const needsPermissionUpdate = decision.alwaysAllow ||
+                                    toolName === "ExitPlanMode" ||
+                                    toolName === "EnterPlanMode";
                                 return {
                                     behavior: "allow",
                                     updatedInput: decision.updatedInput ?? input,
-                                    ...(decision.alwaysAllow && opts.suggestions
+                                    ...(needsPermissionUpdate && opts.suggestions
                                         ? { updatedPermissions: opts.suggestions }
                                         : {}),
                                 };
