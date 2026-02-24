@@ -58,7 +58,8 @@ Two Docker volumes persist state across container restarts:
 │   ├── api.spec.ts         # API endpoint tests (healthz, auth, sessions, browse)
 │   ├── web-ui.spec.ts      # Web UI login/auth tests
 │   ├── ws.spec.ts          # WebSocket connection tests
-│   └── static.spec.ts      # Static file serving tests
+│   ├── static.spec.ts      # Static file serving tests
+│   └── session-delivery.spec.ts # Session message delivery pipeline (requires ENABLE_TEST_PROVIDER=1)
 ├── docs/plans/             # Design docs and implementation plans
 ├── server/                 # API server + web UI
 │   ├── package.json        # Server dependencies
@@ -67,7 +68,7 @@ Two Docker volumes persist state across container restarts:
 │   │   ├── index.ts        # Entry point: HTTP + WS server
 │   │   ├── auth.ts         # Bearer token auth, rate limiting (API_PASSWORD, TRUST_PROXY)
 │   │   ├── session-history.ts # CLI session history reader
-│   │   ├── session-watcher.ts # Session file watcher (JSONL → WS)
+│   │   ├── session-watcher.ts # Central message router (push/poll/idle modes → WS)
 │   │   ├── sessions.ts     # Session manager (provider-agnostic)
 │   │   ├── routes.ts       # REST route handlers (sessions, browse, history, OpenAPI docs)
 │   │   ├── ws.ts           # WebSocket handler
@@ -263,19 +264,23 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 - **API docs** are served at `/api/docs` (Scalar UI, CDN) and `/api/openapi.json` (OpenAPI 3.1 spec). Both are unauthenticated, like `/healthz`.
 - `server/dist/` is tracked in git. After modifying any file under `server/src/`, rebuild with `cd server && npm run build` and commit the updated `server/dist/` files alongside the source changes.
 - **ESLint** is configured in both `server/` and `server/ui/` using ESLint v9 flat config with typescript-eslint. Run `npm run lint` to check and `npm run lint:fix` to auto-fix. The UI config includes `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`.
+- **SessionWatcher is the single message authority** — All messages flow through `SessionWatcher` via `pushMessage()` (stores + broadcasts) or `pushEvent()` (broadcasts only, ephemeral). `runSession()` sets mode to `"push"` and pushes messages into the watcher; it never broadcasts directly to WebSocket clients. New subscribers default to `"poll"` mode for CLI/history live updates; `runSession()` overrides to `"push"` immediately. Do not introduce alternate delivery paths.
 - **Future-proof implementations over workarounds** — Always prefer the architecturally correct, future-proof approach even when it's more complex. Do not suggest a simpler workaround just because the proper solution requires more effort. This project has zero users, so breaking changes are free — leverage this to iterate toward the right architecture without backwards-compatibility constraints.
 
 ## Testing Strategy
 
 ### Automated tests (Playwright)
 
-Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket connections, and static file serving. The config (`playwright.config.ts`) runs Chromium only. Five test projects target different services:
+Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket connections, static file serving, and session message delivery. The config (`playwright.config.ts`) defines eight test projects:
 
 - `ttyd-chromium` → `http://localhost:7681` (basic-auth)
+- `ttyd-firefox` → `http://localhost:7681` (basic-auth)
 - `api` → `http://localhost:8080` (bearer token)
 - `web-ui` → `http://localhost:8080` (browser)
+- `web-ui-firefox` → `http://localhost:8080` (browser)
 - `ws` → `http://localhost:8080` (WebSocket)
 - `static` → `http://localhost:8080` (static files)
+- `session-delivery` → `http://localhost:8080` (test provider, requires `ENABLE_TEST_PROVIDER=1`)
 
 Ports are configurable via `TTYD_PORT` and `API_PORT` env vars (default to 7681/8080). When running tests inside hatchpod itself, use offset ports to avoid conflicts with the host services (e.g., `TTYD_PORT=17681 API_PORT=18080`).
 
@@ -289,6 +294,7 @@ docker run -d --name hatchpod-test \
   -e TTYD_USERNAME=hatchpod \
   -e TTYD_PASSWORD=changeme \
   -e API_PASSWORD=changeme \
+  -e ENABLE_TEST_PROVIDER=1 \
   hatchpod:latest
 
 # 2. Run tests (pass offset ports via env vars)
@@ -306,6 +312,7 @@ docker rm -f hatchpod-test
 - **`tests/web-ui.spec.ts`** — Web UI: login page rendering, authentication flow
 - **`tests/ws.spec.ts`** — WebSocket: connection lifecycle, message exchange
 - **`tests/static.spec.ts`** — Static file serving: index.html, assets, SPA fallback
+- **`tests/session-delivery.spec.ts`** — Session message delivery pipeline: push-mode flow, lifecycle transitions, follow-up messages, reconnect replay, multi-client broadcast, session ID remap, interrupt, tool approval, thinking deltas, slash commands. Requires `ENABLE_TEST_PROVIDER=1`
 
 ### Manual verification
 
