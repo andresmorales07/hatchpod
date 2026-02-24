@@ -90,5 +90,14 @@ export default defineConfig({
         trace: 'on-first-retry',
       },
     },
+    {
+      name: 'session-delivery',
+      testMatch: 'session-delivery.spec.ts',
+      use: {
+        baseURL: `http://localhost:${apiPort}`,
+        browserName: 'chromium',
+        trace: 'on-first-retry',
+      },
+    },
   ],
 });

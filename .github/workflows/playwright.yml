@@ -22,6 +22,7 @@ jobs:
           -e TTYD_USERNAME=hatchpod \
           -e TTYD_PASSWORD=changeme \
           -e API_PASSWORD=changeme \
+          -e ENABLE_TEST_PROVIDER=1 \
           hatchpod-local
     - name: Wait for container to be healthy
       run: |

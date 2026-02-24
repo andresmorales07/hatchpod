@@ -12,6 +12,7 @@ Run the full e2e test suite against a fresh Docker container. Uses offset ports 
    docker run -d --name hatchpod-test \
      -p 17681:7681 -p 12222:2222 -p 18080:8080 \
      -e TTYD_USERNAME=hatchpod -e TTYD_PASSWORD=changeme -e API_PASSWORD=changeme \
+     -e ENABLE_TEST_PROVIDER=1 \
      hatchpod:latest
    ```
 3. **Wait for healthy**: poll `curl -sf http://localhost:17681` every 2 seconds until it responds (max 60s). If it never becomes healthy, show `docker logs hatchpod-test` and abort.
