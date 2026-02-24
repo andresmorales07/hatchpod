@@ -35,7 +35,8 @@ export declare class SessionWatcher {
     subscribe(sessionId: string, client: WebSocket, messageLimit?: number): Promise<void>;
     /**
      * Unsubscribe a client from a session.
-     * Removes the session watch entirely if no clients remain.
+     * Removes the session entry if no clients remain AND no in-memory messages
+     * exist. Sessions with messages are preserved for reconnect replay.
      */
     unsubscribe(sessionId: string, client: WebSocket): void;
     /**

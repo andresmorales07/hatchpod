@@ -69,7 +69,8 @@ export class SessionWatcher {
     }
     /**
      * Unsubscribe a client from a session.
-     * Removes the session watch entirely if no clients remain.
+     * Removes the session entry if no clients remain AND no in-memory messages
+     * exist. Sessions with messages are preserved for reconnect replay.
      */
     unsubscribe(sessionId, client) {
         let watched = this.sessions.get(sessionId);
@@ -85,7 +86,7 @@ export class SessionWatcher {
         if (!watched)
             return;
         watched.clients.delete(client);
-        if (watched.clients.size === 0) {
+        if (watched.clients.size === 0 && watched.messages.length === 0) {
             for (const [key, w] of this.sessions) {
                 if (w === watched) {
                     this.sessions.delete(key);

@@ -633,7 +633,7 @@ describe("SessionWatcher", () => {
   });
 
   describe("unsubscribe", () => {
-    it("stops watching when last client unsubscribes", async () => {
+    it("preserves entry with messages for reconnect replay", async () => {
       const sessionId = "sess-unsub";
       const filePath = join(subDir, `${sessionId}.jsonl`);
       await writeFile(filePath, jsonlLine("line1"));
@@ -648,14 +648,36 @@ describe("SessionWatcher", () => {
       expect(watcher.watchedCount).toBe(1);
 
       watcher.unsubscribe(sessionId, ws as unknown as import("ws").WebSocket);
-      expect(watcher.watchedCount).toBe(0);
+      // Entry preserved because it has messages from replay
+      expect(watcher.watchedCount).toBe(1);
 
-      // Append data after unsub — should NOT be delivered
+      // Append data after unsub — should NOT be delivered (no clients)
       sent.length = 0;
       await appendFile(filePath, jsonlLine("after-unsub"));
       await delay(200);
-
       expect(parseMessages(sent)).toHaveLength(0);
+
+      // But reconnecting should replay from memory
+      const client2 = createMockWs();
+      await watcher.subscribe(sessionId, client2.ws as unknown as import("ws").WebSocket);
+      const replayed = parseMessages(client2.sent);
+      expect(replayed).toHaveLength(1);
+      expect((replayed[0] as { parts: Array<{ text?: string }> }).parts[0].text).toBe("line1");
+
+      watcher.stop();
+    });
+
+    it("removes entry when last client leaves and no messages exist", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const { ws } = createMockWs();
+      await watcher.subscribe("empty-sess", ws as unknown as import("ws").WebSocket);
+      expect(watcher.watchedCount).toBe(1);
+
+      watcher.unsubscribe("empty-sess", ws as unknown as import("ws").WebSocket);
+      expect(watcher.watchedCount).toBe(0);
 
       watcher.stop();
     });
@@ -817,12 +839,8 @@ describe("SessionWatcher", () => {
     });
 
     it("watchedCount reflects active sessions", async () => {
-      const filePath1 = join(subDir, "s1.jsonl");
-      const filePath2 = join(subDir, "s2.jsonl");
-      await writeFile(filePath1, jsonlLine("a"));
-      await writeFile(filePath2, jsonlLine("b"));
-
-      const fileMap = new Map([["s1", filePath1], ["s2", filePath2]]);
+      // Use sessions without files — entries are cleaned up on last unsubscribe
+      const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
       const watcher = new SessionWatcher(adapter);
 
