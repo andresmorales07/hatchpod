@@ -184,6 +184,62 @@ describe("ClaudeAdapter.getMessages", () => {
     expect(result.tasks.some((t) => t.subject === "Write unit tests")).toBe(true);
   });
 
+  it("handles compact_boundary lines without disrupting message count or pagination", async () => {
+    const sid = randomUUID();
+    // Build a JSONL with: progress, user, compact_boundary system line, assistant
+    const lines = [
+      JSON.stringify({
+        type: "progress",
+        sessionId: sid,
+        cwd: "/home/user/workspace",
+        timestamp: "2026-02-20T10:00:00.000Z",
+      }),
+      JSON.stringify({
+        type: "user",
+        sessionId: sid,
+        message: { role: "user", content: "Hello" },
+        timestamp: "2026-02-20T10:00:01.000Z",
+      }),
+      JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 45000 },
+        sessionId: sid,
+        timestamp: "2026-02-20T10:00:02.000Z",
+      }),
+      JSON.stringify({
+        type: "assistant",
+        sessionId: sid,
+        message: {
+          role: "assistant",
+          type: "message",
+          content: [{ type: "text", text: "Hi there" }],
+        },
+        timestamp: "2026-02-20T10:00:03.000Z",
+      }),
+    ];
+    await writeFile(join(fakeProjectDir, `${sid}.jsonl`), lines.join("\n") + "\n");
+
+    const adapter = new ClaudeAdapter();
+    const result = await adapter.getMessages(sid, {});
+
+    // Should have 3 messages: user, compact_boundary system event, assistant
+    expect(result.messages).toHaveLength(3);
+    expect(result.totalMessages).toBe(3);
+
+    // Messages are indexed 0, 1, 2
+    expect(result.messages[0].role).toBe("user");
+
+    // The compact_boundary is stored as a system message
+    const boundaryMsg = result.messages[1];
+    expect(boundaryMsg.role).toBe("system");
+    expect("event" in boundaryMsg && boundaryMsg.event.type).toBe("compact_boundary");
+    expect("event" in boundaryMsg && (boundaryMsg.event as { trigger: string }).trigger).toBe("auto");
+    expect("event" in boundaryMsg && (boundaryMsg.event as { preTokens: number }).preTokens).toBe(45000);
+
+    expect(result.messages[2].role).toBe("assistant");
+  });
+
   it("throws SessionNotFound for nonexistent session", async () => {
     const adapter = new ClaudeAdapter();
     await expect(adapter.getMessages(randomUUID())).rejects.toMatchObject({

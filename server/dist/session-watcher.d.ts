@@ -63,8 +63,12 @@ export declare class SessionWatcher {
      * Unlike pushMessage(), this does NOT store the event in messages[] —
      * used for status changes, thinking deltas, approval requests, etc.
      *
-     * Exception: thinking_delta events are also buffered in pendingThinkingText
-     * so late-connecting subscribers receive accumulated thinking text on subscribe().
+     * Several event types are buffered in WatchedSession fields so that
+     * late-connecting subscribers receive current state on subscribe():
+     *   - thinking_delta  → pendingThinkingText
+     *   - compacting      → isCompacting
+     *   - context_usage   → lastContextUsage
+     *   - subagent_*      → activeSubagents
      */
     pushEvent(sessionId: string, event: ServerMessage): void;
     /**
@@ -88,15 +92,13 @@ export declare class SessionWatcher {
     /**
      * Replay messages from in-memory store to a single client. Supports
      * pagination via messageLimit (returns the most recent N messages).
-     * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
-     * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
+     * Buffered ephemeral state is sent before replay_complete.
      */
     private replayFromMemory;
     /**
      * Replay messages from JSONL file via adapter.getMessages(), then
      * sync watcher state and send replay_complete.
-     * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
-     * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
+     * Buffered ephemeral state is sent before replay_complete.
      */
     private replayFromFile;
     /** Single poll cycle: check all watched sessions for new data. */

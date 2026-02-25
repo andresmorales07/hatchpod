@@ -1,7 +1,7 @@
 import { open, stat } from "node:fs/promises";
 import type { WebSocket } from "ws";
 import type { ProviderAdapter, NormalizedMessage, ToolSummary } from "./providers/types.js";
-import type { ServerMessage } from "./types.js";
+import type { ServerMessage, ContextUsage } from "./types.js";
 
 /**
  * Session delivery mode.
@@ -47,6 +47,12 @@ interface WatchedSession {
 
   /** Active subagent states — keyed by toolUseId (parent Task tool_use_id). */
   activeSubagents: Map<string, SubagentEntry>;
+
+  /** Whether the session is currently compacting. Cleared on terminal status. */
+  isCompacting: boolean;
+
+  /** Last known context usage. Kept on terminal status (useful final state). */
+  lastContextUsage: ContextUsage | null;
 }
 
 /**
@@ -87,21 +93,23 @@ export class SessionWatcher {
 
     if (watched) {
       watched.clients.add(client);
-      // Snapshot both buffers before any await — concurrent pushMessage() or
+      // Snapshot all buffers before any await — concurrent pushMessage() or
       // pushEvent() calls can mutate these during replayFromFile() suspension.
       const thinkingSnapshot = watched.pendingThinkingText;
       const subagentsSnapshot = new Map(watched.activeSubagents);
+      const compactingSnapshot = watched.isCompacting;
+      const contextUsageSnapshot = watched.lastContextUsage;
       // Replay from best available source (buffered events are sent before
       // replay_complete inside the replay methods)
       if (watched.messages.length > 0) {
-        this.replayFromMemory(watched, client, messageLimit, thinkingSnapshot, subagentsSnapshot);
+        this.replayFromMemory(watched, client, messageLimit, thinkingSnapshot, subagentsSnapshot, compactingSnapshot, contextUsageSnapshot);
       } else {
         // Re-resolve file path if it was null at initial subscribe time
         if (!watched.filePath) {
           const filePath = await this.adapter.getSessionFilePath(sessionId);
           if (filePath) watched.filePath = filePath;
         }
-        await this.replayFromFile(sessionId, watched, client, messageLimit, thinkingSnapshot, subagentsSnapshot);
+        await this.replayFromFile(sessionId, watched, client, messageLimit, thinkingSnapshot, subagentsSnapshot, compactingSnapshot, contextUsageSnapshot);
       }
       return;
     }
@@ -119,6 +127,8 @@ export class SessionWatcher {
       lineBuffer: "",
       pendingThinkingText: "",
       activeSubagents: new Map(),
+      isCompacting: false,
+      lastContextUsage: null,
     };
     this.sessions.set(sessionId, watched);
 
@@ -214,8 +224,12 @@ export class SessionWatcher {
    * Unlike pushMessage(), this does NOT store the event in messages[] —
    * used for status changes, thinking deltas, approval requests, etc.
    *
-   * Exception: thinking_delta events are also buffered in pendingThinkingText
-   * so late-connecting subscribers receive accumulated thinking text on subscribe().
+   * Several event types are buffered in WatchedSession fields so that
+   * late-connecting subscribers receive current state on subscribe():
+   *   - thinking_delta  → pendingThinkingText
+   *   - compacting      → isCompacting
+   *   - context_usage   → lastContextUsage
+   *   - subagent_*      → activeSubagents
    */
   pushEvent(sessionId: string, event: ServerMessage): void {
     const watched = this.sessions.get(sessionId);
@@ -231,6 +245,13 @@ export class SessionWatcher {
     // Buffer thinking text so late-connecting subscribers can catch up
     if (event.type === "thinking_delta") {
       watched.pendingThinkingText += event.text;
+    }
+
+    // Buffer compacting and context usage state for late subscribers
+    if (event.type === "compacting") {
+      watched.isCompacting = event.isCompacting;
+    } else if (event.type === "context_usage") {
+      watched.lastContextUsage = { inputTokens: event.inputTokens, contextWindow: event.contextWindow, percentUsed: event.percentUsed };
     }
 
     // Buffer subagent state for late subscribers
@@ -258,13 +279,14 @@ export class SessionWatcher {
       watched.activeSubagents.delete(e.toolUseId);
     }
 
-    // Clear thinking buffer and subagent state on terminal status — prevents
-    // stale data from being replayed after session completion or error
+    // Clear transient buffers on terminal status — prevents stale data from
+    // being replayed after session completion or error. lastContextUsage is
+    // intentionally kept (useful final state for the header badge).
     if (event.type === "status") {
-      const status = (event as { status: string }).status;
-      if (status === "completed" || status === "error" || status === "interrupted") {
+      if (event.status === "completed" || event.status === "error" || event.status === "interrupted") {
         watched.pendingThinkingText = "";
         watched.activeSubagents.clear();
+        watched.isCompacting = false;
       }
     }
 
@@ -287,6 +309,8 @@ export class SessionWatcher {
         lineBuffer: "",
         pendingThinkingText: "",
         activeSubagents: new Map(),
+        isCompacting: false,
+        lastContextUsage: null,
       };
       this.sessions.set(sessionId, watched);
     } else {
@@ -353,8 +377,7 @@ export class SessionWatcher {
   /**
    * Replay messages from in-memory store to a single client. Supports
    * pagination via messageLimit (returns the most recent N messages).
-   * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
-   * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
+   * Buffered ephemeral state is sent before replay_complete.
    */
   private replayFromMemory(
     watched: WatchedSession,
@@ -362,6 +385,8 @@ export class SessionWatcher {
     messageLimit?: number,
     pendingThinking?: string,
     subagentsSnapshot?: Map<string, SubagentEntry>,
+    isCompacting?: boolean,
+    contextUsage?: ContextUsage | null,
   ): void {
     const allMessages = watched.messages;
     const total = allMessages.length;
@@ -380,6 +405,12 @@ export class SessionWatcher {
       this.send(client, { type: "thinking_delta", text: pendingThinking });
     }
     this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
+    if (isCompacting) {
+      this.send(client, { type: "compacting", isCompacting: true });
+    }
+    if (contextUsage) {
+      this.send(client, { type: "context_usage", ...contextUsage });
+    }
     this.send(client, {
       type: "replay_complete",
       totalMessages: total,
@@ -390,8 +421,7 @@ export class SessionWatcher {
   /**
    * Replay messages from JSONL file via adapter.getMessages(), then
    * sync watcher state and send replay_complete.
-   * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
-   * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
+   * Buffered ephemeral state is sent before replay_complete.
    */
   private async replayFromFile(
     sessionId: string,
@@ -400,6 +430,8 @@ export class SessionWatcher {
     messageLimit?: number,
     pendingThinking?: string,
     subagentsSnapshot?: Map<string, SubagentEntry>,
+    isCompacting?: boolean,
+    contextUsage?: ContextUsage | null,
   ): Promise<void> {
     // No file to replay (e.g., test adapter) — just signal replay is done
     if (!watched.filePath) {
@@ -407,6 +439,8 @@ export class SessionWatcher {
         this.send(client, { type: "thinking_delta", text: pendingThinking });
       }
       this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
+      if (isCompacting) this.send(client, { type: "compacting", isCompacting: true });
+      if (contextUsage) this.send(client, { type: "context_usage", ...contextUsage });
       this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       return;
     }
@@ -432,6 +466,8 @@ export class SessionWatcher {
           this.send(client, { type: "thinking_delta", text: pendingThinking });
         }
         this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
+        if (isCompacting) this.send(client, { type: "compacting", isCompacting: true });
+        if (contextUsage) this.send(client, { type: "context_usage", ...contextUsage });
         this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
         return;
       }
@@ -440,6 +476,8 @@ export class SessionWatcher {
         this.send(client, { type: "thinking_delta", text: pendingThinking });
       }
       this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
+      if (isCompacting) this.send(client, { type: "compacting", isCompacting: true });
+      if (contextUsage) this.send(client, { type: "context_usage", ...contextUsage });
       this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       throw err;
     }
@@ -466,11 +504,13 @@ export class SessionWatcher {
       this.send(client, { type: "tasks", tasks: result.tasks });
     }
 
-    // 4. Send buffered thinking text and active subagent state, then replay_complete
+    // 4. Send buffered ephemeral state, then replay_complete
     if (pendingThinking) {
       this.send(client, { type: "thinking_delta", text: pendingThinking });
     }
     this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
+    if (isCompacting) this.send(client, { type: "compacting", isCompacting: true });
+    if (contextUsage) this.send(client, { type: "context_usage", ...contextUsage });
     this.send(client, {
       type: "replay_complete",
       totalMessages: result.totalMessages,

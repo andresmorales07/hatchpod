@@ -94,8 +94,22 @@ export type ServerMessage = {
     status: "completed" | "failed" | "stopped";
     summary: string;
 } | {
+    type: "compacting";
+    isCompacting: boolean;
+} | {
+    type: "context_usage";
+    inputTokens: number;
+    contextWindow: number;
+    percentUsed: number;
+} | {
     type: "ping";
 } | {
     type: "error";
     message: string;
+};
+/** Shared type for context window usage data, used in both server-side watcher state and WS events. */
+export type ContextUsage = {
+    inputTokens: number;
+    contextWindow: number;
+    percentUsed: number;
 };

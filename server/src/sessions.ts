@@ -279,6 +279,18 @@ async function runSession(
           summary: info.summary,
         });
       },
+      onCompacting: (isCompacting) => {
+        watcher!.pushEvent(session.sessionId, { type: "compacting", isCompacting });
+      },
+      onContextUsage: (usage) => {
+        const percentUsed = Math.min(100, Math.round((usage.inputTokens / usage.contextWindow) * 100));
+        watcher!.pushEvent(session.sessionId, {
+          type: "context_usage",
+          inputTokens: usage.inputTokens,
+          contextWindow: usage.contextWindow,
+          percentUsed,
+        });
+      },
     });
 
     // Push the user prompt as a message. The watcher stores it in messages[]

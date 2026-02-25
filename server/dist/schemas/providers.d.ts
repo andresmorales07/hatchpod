@@ -122,6 +122,14 @@ export declare const AssistantMessageSchema: z.ZodObject<{
     index: z.ZodNumber;
     thinkingDurationMs: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
+declare const CompactBoundaryEventSchema: z.ZodObject<{
+    type: z.ZodLiteral<"compact_boundary">;
+    trigger: z.ZodEnum<{
+        manual: "manual";
+        auto: "auto";
+    }>;
+    preTokens: z.ZodNumber;
+}, z.core.$strip>;
 export declare const SystemEventSchema: z.ZodObject<{
     role: z.ZodLiteral<"system">;
     event: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -138,6 +146,13 @@ export declare const SystemEventSchema: z.ZodObject<{
             description: z.ZodString;
             argumentHint: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"compact_boundary">;
+        trigger: z.ZodEnum<{
+            manual: "manual";
+            auto: "auto";
+        }>;
+        preTokens: z.ZodNumber;
     }, z.core.$strip>], "type">;
     index: z.ZodNumber;
 }, z.core.$strip>;
@@ -214,6 +229,13 @@ export declare const NormalizedMessageSchema: z.ZodDiscriminatedUnion<[z.ZodObje
             description: z.ZodString;
             argumentHint: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"compact_boundary">;
+        trigger: z.ZodEnum<{
+            manual: "manual";
+            auto: "auto";
+        }>;
+        preTokens: z.ZodNumber;
     }, z.core.$strip>], "type">;
     index: z.ZodNumber;
 }, z.core.$strip>], "role">;
@@ -332,6 +354,13 @@ export declare const PaginatedMessagesSchema: z.ZodObject<{
                 description: z.ZodString;
                 argumentHint: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>>;
+        }, z.core.$strip>, z.ZodObject<{
+            type: z.ZodLiteral<"compact_boundary">;
+            trigger: z.ZodEnum<{
+                manual: "manual";
+                auto: "auto";
+            }>;
+            preTokens: z.ZodNumber;
         }, z.core.$strip>], "type">;
         index: z.ZodNumber;
     }, z.core.$strip>], "role">>;
@@ -386,3 +415,5 @@ export type PermissionModeCommon = z.infer<typeof PermissionModeCommonSchema>;
 export type SubagentStartedEvent = z.infer<typeof SubagentStartedEventSchema>;
 export type SubagentToolCallEvent = z.infer<typeof SubagentToolCallEventSchema>;
 export type SubagentCompletedEvent = z.infer<typeof SubagentCompletedEventSchema>;
+export type CompactBoundaryEvent = z.infer<typeof CompactBoundaryEventSchema>;
+export {};

@@ -53,5 +53,10 @@ export type ServerMessage =
   | { type: "subagent_started"; taskId: string; toolUseId: string; description: string; agentType?: string; startedAt: number }
   | { type: "subagent_tool_call"; toolUseId: string; toolName: string; summary: ToolSummary }
   | { type: "subagent_completed"; taskId: string; toolUseId: string; status: "completed" | "failed" | "stopped"; summary: string }
+  | { type: "compacting"; isCompacting: boolean }
+  | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
   | { type: "ping" }
   | { type: "error"; message: string };
+
+/** Shared type for context window usage data, used in both server-side watcher state and WS events. */
+export type ContextUsage = { inputTokens: number; contextWindow: number; percentUsed: number };

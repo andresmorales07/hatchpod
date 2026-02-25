@@ -174,6 +174,7 @@ export class ClaudeAdapter implements ProviderAdapter {
     let totalCostUsd = 0;
     let numTurns = 0;
     let accumulatedThinking = "";
+    let cachedContextWindow = 0;
     const taskIdToToolUseId = new Map<string, string>();
 
     try {
@@ -301,6 +302,28 @@ export class ClaudeAdapter implements ProviderAdapter {
                 `claude-adapter: task_notification for unknown task_id "${sysMsg.task_id}" — no matching task_started received. Subagent card may be stuck.`,
               );
             }
+          } else if (sysMsg.subtype === "status") {
+            // SDKStatusMessage: status is "compacting" when compaction starts, null when it ends
+            const isCompacting = sysMsg.status === "compacting";
+            try {
+              options.onCompacting?.(isCompacting);
+            } catch (err) {
+              console.error("claude-adapter: onCompacting callback failed:", err);
+            }
+          } else if (sysMsg.subtype === "compact_boundary") {
+            // SDKCompactBoundaryMessage: marks where context was compacted
+            const meta = sysMsg.compact_metadata as { trigger?: string; pre_tokens?: number } | undefined;
+            if (!meta?.trigger || typeof meta?.pre_tokens !== "number") {
+              console.warn("claude-adapter: compact_boundary missing compact_metadata fields", { trigger: meta?.trigger, pre_tokens: meta?.pre_tokens });
+            }
+            const trigger = meta?.trigger === "manual" ? "manual" : "auto";
+            const preTokens = typeof meta?.pre_tokens === "number" ? meta.pre_tokens : 0;
+            const compactMsg: NormalizedMessage = {
+              role: "system",
+              event: { type: "compact_boundary", trigger, preTokens },
+              index: messageIndex++,
+            };
+            yield compactMsg;
           } else if (sysMsg.subtype !== undefined) {
             console.warn(`claude-adapter: unhandled system subtype "${sysMsg.subtype}"`, sysMsg);
           }
@@ -360,6 +383,37 @@ export class ClaudeAdapter implements ProviderAdapter {
           numTurns = resultMsg.num_turns;
           if (resultMsg.session_id) {
             providerSessionId = resultMsg.session_id;
+          }
+          // Extract context window size and input tokens from modelUsage
+          if (resultMsg.modelUsage) {
+            for (const usage of Object.values(resultMsg.modelUsage)) {
+              if (usage.contextWindow > 0) {
+                cachedContextWindow = usage.contextWindow;
+                try {
+                  options.onContextUsage?.({ inputTokens: usage.inputTokens, contextWindow: usage.contextWindow });
+                } catch (err) {
+                  console.error("claude-adapter: onContextUsage callback failed:", err);
+                }
+                break;
+              }
+            }
+          }
+        }
+
+        // Extract per-turn context usage from assistant messages.
+        // cachedContextWindow is populated from the result message, which arrives AFTER all
+        // assistant messages in the SDK stream. On turn 1 (fresh session), this guard is always
+        // false and no callback fires. On turn 2+ (resumed session), cachedContextWindow is set
+        // from the previous turn's result, so mid-session assistant messages provide live updates.
+        if (sdkMessage.type === "assistant" && cachedContextWindow > 0) {
+          const assistantMsg = sdkMessage as SDKAssistantMessage;
+          const inputTokens = (assistantMsg.message as { usage?: { input_tokens?: number } })?.usage?.input_tokens;
+          if (typeof inputTokens === "number" && inputTokens > 0) {
+            try {
+              options.onContextUsage?.({ inputTokens, contextWindow: cachedContextWindow });
+            } catch (err) {
+              console.error("claude-adapter: onContextUsage callback failed:", err);
+            }
           }
         }
 
@@ -423,6 +477,23 @@ export class ClaudeAdapter implements ProviderAdapter {
 
         const type = parsed.type;
         const lineTs = typeof parsed.timestamp === "string" ? Date.parse(parsed.timestamp) : NaN;
+
+        // Handle compact_boundary system lines
+        if (type === "system" && parsed.subtype === "compact_boundary") {
+          const meta = parsed.compact_metadata as { trigger?: string; pre_tokens?: number } | undefined;
+          if (!meta?.trigger || typeof meta?.pre_tokens !== "number") {
+            console.warn("claude-adapter: compact_boundary missing compact_metadata fields", { trigger: meta?.trigger, pre_tokens: meta?.pre_tokens });
+          }
+          const trigger = meta?.trigger === "manual" ? "manual" : "auto";
+          const preTokens = typeof meta?.pre_tokens === "number" ? meta.pre_tokens : 0;
+          messages.push({
+            role: "system",
+            event: { type: "compact_boundary", trigger, preTokens },
+            index: messageIndex++,
+          });
+          if (!Number.isNaN(lineTs)) prevTimestampMs = lineTs;
+          continue;
+        }
 
         if (type !== "user" && type !== "assistant") {
           if (!Number.isNaN(lineTs)) prevTimestampMs = lineTs;
@@ -553,6 +624,18 @@ export class ClaudeAdapter implements ProviderAdapter {
     }
 
     const type = parsed.type;
+
+    // Handle compact_boundary system lines from JSONL
+    if (type === "system" && parsed.subtype === "compact_boundary") {
+      const meta = parsed.compact_metadata as { trigger?: string; pre_tokens?: number } | undefined;
+      if (!meta?.trigger || typeof meta?.pre_tokens !== "number") {
+        console.warn("claude-adapter: compact_boundary missing compact_metadata fields", { trigger: meta?.trigger, pre_tokens: meta?.pre_tokens });
+      }
+      const trigger = meta?.trigger === "manual" ? "manual" : "auto";
+      const preTokens = typeof meta?.pre_tokens === "number" ? meta.pre_tokens : 0;
+      return { role: "system", event: { type: "compact_boundary", trigger, preTokens }, index };
+    }
+
     if (type !== "user" && type !== "assistant") return null;
 
     // Skip system-injected user messages (skill content, system context, etc.)

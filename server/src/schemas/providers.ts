@@ -108,6 +108,12 @@ const SystemInitEventSchema = z.object({
   slashCommands: z.array(SlashCommandSchema),
 });
 
+const CompactBoundaryEventSchema = z.object({
+  type: z.literal("compact_boundary"),
+  trigger: z.enum(["manual", "auto"]),
+  preTokens: z.number().int().nonnegative(),
+});
+
 export const SystemEventSchema = z
   .object({
     role: z.literal("system"),
@@ -115,6 +121,7 @@ export const SystemEventSchema = z
       SessionResultEventSchema,
       StatusEventSchema,
       SystemInitEventSchema,
+      CompactBoundaryEventSchema,
     ]),
     index: z.number().int(),
   })
@@ -224,3 +231,4 @@ export type PermissionModeCommon = z.infer<typeof PermissionModeCommonSchema>;
 export type SubagentStartedEvent = z.infer<typeof SubagentStartedEventSchema>;
 export type SubagentToolCallEvent = z.infer<typeof SubagentToolCallEventSchema>;
 export type SubagentCompletedEvent = z.infer<typeof SubagentCompletedEventSchema>;
+export type CompactBoundaryEvent = z.infer<typeof CompactBoundaryEventSchema>;

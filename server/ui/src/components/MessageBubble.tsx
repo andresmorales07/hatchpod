@@ -148,6 +148,27 @@ function renderPart(
 }
 
 export function MessageBubble({ message, toolResults }: Props) {
+  // Render system events inline
+  if (message.role === "system") {
+    if ("event" in message && message.event.type === "compact_boundary") {
+      const { trigger, preTokens } = message.event;
+      const label = trigger === "manual" ? "Conversation compacted" : "Auto-compacted";
+      const tokenStr = preTokens > 0
+        ? ` (was ${preTokens >= 1000 ? `${Math.round(preTokens / 1000)}k` : preTokens} tokens)`
+        : "";
+      return (
+        <div className="flex items-center gap-3 py-2">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {label}{tokenStr}
+          </span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+      );
+    }
+    return null;
+  }
+
   // Hide user messages that only contain tool_result parts (shown inside ToolCard)
   if (message.role === "user") {
     const hasOnlyToolResults = message.parts.every((p) => p.type === "tool_result");
