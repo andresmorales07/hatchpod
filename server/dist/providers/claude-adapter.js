@@ -199,36 +199,57 @@ export class ClaudeAdapter {
                 // Handle subagent lifecycle messages (task_started / task_notification)
                 if (sdkMessage.type === "system") {
                     const sysMsg = sdkMessage;
-                    if (sysMsg.subtype === "task_started" && typeof sysMsg.tool_use_id === "string") {
-                        taskIdToToolUseId.set(sysMsg.task_id, sysMsg.tool_use_id);
-                        try {
-                            options.onSubagentStarted?.({
-                                taskId: sysMsg.task_id,
-                                toolUseId: sysMsg.tool_use_id,
-                                description: sysMsg.description ?? "",
-                                agentType: typeof sysMsg.task_type === "string" ? sysMsg.task_type : undefined,
-                            });
+                    if (sysMsg.subtype === "task_started") {
+                        if (typeof sysMsg.tool_use_id !== "string" || !sysMsg.tool_use_id) {
+                            console.warn("claude-adapter: task_started missing tool_use_id", sysMsg);
                         }
-                        catch (err) {
-                            console.error("Failed to deliver subagent started:", err);
+                        else if (typeof sysMsg.task_id !== "string" || !sysMsg.task_id) {
+                            console.warn("claude-adapter: task_started missing task_id", sysMsg);
+                        }
+                        else {
+                            taskIdToToolUseId.set(sysMsg.task_id, sysMsg.tool_use_id);
+                            try {
+                                options.onSubagentStarted?.({
+                                    taskId: sysMsg.task_id,
+                                    toolUseId: sysMsg.tool_use_id,
+                                    description: sysMsg.description || "Running subagent",
+                                    agentType: typeof sysMsg.task_type === "string" && sysMsg.task_type ? sysMsg.task_type : undefined,
+                                });
+                            }
+                            catch (err) {
+                                console.error(`claude-adapter: onSubagentStarted callback failed for taskId="${sysMsg.task_id}" toolUseId="${sysMsg.tool_use_id}":`, err);
+                            }
                         }
                     }
                     else if (sysMsg.subtype === "task_notification") {
                         const toolUseId = taskIdToToolUseId.get(sysMsg.task_id);
                         if (toolUseId) {
+                            const rawStatus = sysMsg.status ?? "completed";
+                            const statusMap = {
+                                completed: "completed",
+                                failed: "failed",
+                                stopped: "stopped",
+                            };
+                            const status = statusMap[rawStatus] ?? "completed";
                             try {
                                 options.onSubagentCompleted?.({
                                     taskId: sysMsg.task_id,
                                     toolUseId,
-                                    status: sysMsg.status ?? "completed",
+                                    status,
                                     summary: sysMsg.summary ?? "",
                                 });
                             }
                             catch (err) {
-                                console.error("Failed to deliver subagent completed:", err);
+                                console.error(`claude-adapter: onSubagentCompleted callback failed for taskId="${sysMsg.task_id}" toolUseId="${toolUseId}":`, err);
                             }
                             taskIdToToolUseId.delete(sysMsg.task_id);
                         }
+                        else {
+                            console.warn(`claude-adapter: task_notification for unknown task_id "${sysMsg.task_id}" — no matching task_started received. Subagent card may be stuck.`);
+                        }
+                    }
+                    else if (sysMsg.subtype !== undefined) {
+                        console.warn(`claude-adapter: unhandled system subtype "${sysMsg.subtype}"`, sysMsg);
                     }
                     continue;
                 }
@@ -247,7 +268,7 @@ export class ClaudeAdapter {
                                     });
                                 }
                                 catch (err) {
-                                    console.error("Failed to deliver subagent tool call:", err);
+                                    console.error(`claude-adapter: onSubagentToolCall callback failed for toolUseId="${parentToolUseId}" toolName="${block.name}":`, err);
                                 }
                             }
                         }

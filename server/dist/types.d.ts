@@ -81,6 +81,7 @@ export type ServerMessage = {
     toolUseId: string;
     description: string;
     agentType?: string;
+    startedAt: number;
 } | {
     type: "subagent_tool_call";
     toolUseId: string;
@@ -90,7 +91,7 @@ export type ServerMessage = {
     type: "subagent_completed";
     taskId: string;
     toolUseId: string;
-    status: string;
+    status: "completed" | "failed" | "stopped";
     summary: string;
 } | {
     type: "ping";

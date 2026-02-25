@@ -251,7 +251,11 @@ export declare const SubagentToolCallEventSchema: z.ZodObject<{
 export declare const SubagentCompletedEventSchema: z.ZodObject<{
     taskId: z.ZodString;
     toolUseId: z.ZodString;
-    status: z.ZodString;
+    status: z.ZodEnum<{
+        completed: "completed";
+        failed: "failed";
+        stopped: "stopped";
+    }>;
     summary: z.ZodString;
 }, z.core.$strip>;
 export declare const PaginatedMessagesSchema: z.ZodObject<{

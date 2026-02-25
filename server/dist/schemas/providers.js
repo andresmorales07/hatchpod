@@ -124,24 +124,24 @@ export const ExtractedTaskSchema = z
 // ── Subagent events (ephemeral, not stored as messages) ──
 export const SubagentStartedEventSchema = z
     .object({
-    taskId: z.string(),
-    toolUseId: z.string(),
-    description: z.string(),
-    agentType: z.string().optional(),
+    taskId: z.string().min(1),
+    toolUseId: z.string().min(1),
+    description: z.string().min(1),
+    agentType: z.string().min(1).optional(),
 })
     .openapi("SubagentStartedEvent");
 export const SubagentToolCallEventSchema = z
     .object({
-    toolUseId: z.string(),
-    toolName: z.string(),
+    toolUseId: z.string().min(1),
+    toolName: z.string().min(1),
     summary: ToolSummarySchema,
 })
     .openapi("SubagentToolCallEvent");
 export const SubagentCompletedEventSchema = z
     .object({
-    taskId: z.string(),
-    toolUseId: z.string(),
-    status: z.string(),
+    taskId: z.string().min(1),
+    toolUseId: z.string().min(1),
+    status: z.enum(["completed", "failed", "stopped"]),
     summary: z.string(),
 })
     .openapi("SubagentCompletedEvent");

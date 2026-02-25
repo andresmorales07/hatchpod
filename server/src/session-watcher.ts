@@ -11,6 +11,16 @@ import type { ServerMessage } from "./types.js";
  */
 type SessionMode = "push" | "poll" | "idle";
 
+/** Buffered state for a single active subagent (keyed by toolUseId). */
+interface SubagentEntry {
+  taskId: string;
+  description: string;
+  agentType?: string;
+  toolCalls: Array<{ toolName: string; summary: ToolSummary }>;
+  /** Wall-clock ms when the subagent_started event was first received. */
+  startedAt: number;
+}
+
 /** Internal tracking state for a single watched session. */
 interface WatchedSession {
   /** In-memory message log — single source of truth for message history. */
@@ -36,13 +46,7 @@ interface WatchedSession {
   pendingThinkingText: string;
 
   /** Active subagent states — keyed by toolUseId (parent Task tool_use_id). */
-  activeSubagents: Map<string, {
-    taskId: string;
-    description: string;
-    agentType?: string;
-    toolCalls: Array<{ toolName: string; summary: ToolSummary }>;
-    startedAt: number;
-  }>;
+  activeSubagents: Map<string, SubagentEntry>;
 }
 
 /**
@@ -83,20 +87,21 @@ export class SessionWatcher {
 
     if (watched) {
       watched.clients.add(client);
-      // Snapshot thinking text before any await — pushMessage() can clear
-      // pendingThinkingText during the replayFromFile() suspension.
+      // Snapshot both buffers before any await — concurrent pushMessage() or
+      // pushEvent() calls can mutate these during replayFromFile() suspension.
       const thinkingSnapshot = watched.pendingThinkingText;
-      // Replay from best available source (thinking_delta is sent before
+      const subagentsSnapshot = new Map(watched.activeSubagents);
+      // Replay from best available source (buffered events are sent before
       // replay_complete inside the replay methods)
       if (watched.messages.length > 0) {
-        this.replayFromMemory(watched, client, messageLimit, thinkingSnapshot);
+        this.replayFromMemory(watched, client, messageLimit, thinkingSnapshot, subagentsSnapshot);
       } else {
         // Re-resolve file path if it was null at initial subscribe time
         if (!watched.filePath) {
           const filePath = await this.adapter.getSessionFilePath(sessionId);
           if (filePath) watched.filePath = filePath;
         }
-        await this.replayFromFile(sessionId, watched, client, messageLimit, thinkingSnapshot);
+        await this.replayFromFile(sessionId, watched, client, messageLimit, thinkingSnapshot, subagentsSnapshot);
       }
       return;
     }
@@ -230,19 +235,23 @@ export class SessionWatcher {
 
     // Buffer subagent state for late subscribers
     if (event.type === "subagent_started") {
-      const e = event as { type: string; taskId: string; toolUseId: string; description: string; agentType?: string };
+      const e = event as { type: string; taskId: string; toolUseId: string; description: string; agentType?: string; startedAt: number };
       watched.activeSubagents.set(e.toolUseId, {
         taskId: e.taskId,
         description: e.description,
         agentType: e.agentType,
         toolCalls: [],
-        startedAt: Date.now(),
+        startedAt: e.startedAt,
       });
     } else if (event.type === "subagent_tool_call") {
       const e = event as { type: string; toolUseId: string; toolName: string; summary: ToolSummary };
       const entry = watched.activeSubagents.get(e.toolUseId);
       if (entry) {
         entry.toolCalls.push({ toolName: e.toolName, summary: e.summary });
+      } else {
+        console.warn(
+          `SessionWatcher.pushEvent: subagent_tool_call for unknown toolUseId "${e.toolUseId}" — subagent_started may not have been received`,
+        );
       }
     } else if (event.type === "subagent_completed") {
       const e = event as { type: string; toolUseId: string };
@@ -345,12 +354,14 @@ export class SessionWatcher {
    * Replay messages from in-memory store to a single client. Supports
    * pagination via messageLimit (returns the most recent N messages).
    * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
+   * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
    */
   private replayFromMemory(
     watched: WatchedSession,
     client: WebSocket,
     messageLimit?: number,
     pendingThinking?: string,
+    subagentsSnapshot?: Map<string, SubagentEntry>,
   ): void {
     const allMessages = watched.messages;
     const total = allMessages.length;
@@ -368,7 +379,7 @@ export class SessionWatcher {
     if (pendingThinking) {
       this.send(client, { type: "thinking_delta", text: pendingThinking });
     }
-    this.replaySubagentState(watched, client);
+    this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
     this.send(client, {
       type: "replay_complete",
       totalMessages: total,
@@ -380,6 +391,7 @@ export class SessionWatcher {
    * Replay messages from JSONL file via adapter.getMessages(), then
    * sync watcher state and send replay_complete.
    * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
+   * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
    */
   private async replayFromFile(
     sessionId: string,
@@ -387,13 +399,14 @@ export class SessionWatcher {
     client: WebSocket,
     messageLimit?: number,
     pendingThinking?: string,
+    subagentsSnapshot?: Map<string, SubagentEntry>,
   ): Promise<void> {
     // No file to replay (e.g., test adapter) — just signal replay is done
     if (!watched.filePath) {
       if (pendingThinking) {
         this.send(client, { type: "thinking_delta", text: pendingThinking });
       }
-      this.replaySubagentState(watched, client);
+      this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
       this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       return;
     }
@@ -418,6 +431,7 @@ export class SessionWatcher {
         if (pendingThinking) {
           this.send(client, { type: "thinking_delta", text: pendingThinking });
         }
+        this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
         this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
         return;
       }
@@ -425,6 +439,7 @@ export class SessionWatcher {
       if (pendingThinking) {
         this.send(client, { type: "thinking_delta", text: pendingThinking });
       }
+      this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
       this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       throw err;
     }
@@ -455,7 +470,7 @@ export class SessionWatcher {
     if (pendingThinking) {
       this.send(client, { type: "thinking_delta", text: pendingThinking });
     }
-    this.replaySubagentState(watched, client);
+    this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
     this.send(client, {
       type: "replay_complete",
       totalMessages: result.totalMessages,
@@ -547,14 +562,19 @@ export class SessionWatcher {
     }
   }
 
-  /** Replay buffered active subagent state to a single client. */
-  private replaySubagentState(watched: WatchedSession, client: WebSocket): void {
-    for (const [toolUseId, sub] of watched.activeSubagents) {
+  /**
+   * Replay buffered active subagent state to a single client.
+   * Accepts a snapshot of activeSubagents taken before any awaits to avoid
+   * race conditions with concurrent pushEvent() calls.
+   */
+  private replaySubagentState(subagentsSnapshot: ReadonlyMap<string, SubagentEntry>, client: WebSocket): void {
+    for (const [toolUseId, sub] of subagentsSnapshot) {
       this.send(client, {
         type: "subagent_started",
         taskId: sub.taskId,
         toolUseId,
         description: sub.description,
+        startedAt: sub.startedAt,
         ...(sub.agentType ? { agentType: sub.agentType } : {}),
       } as ServerMessage);
       for (const tc of sub.toolCalls) {

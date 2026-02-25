@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useAuthStore } from "./auth";
 import { useSessionsStore } from "./sessions";
-import type { NormalizedMessage, SlashCommand, ExtractedTask } from "@shared/types";
+import type { NormalizedMessage, SlashCommand, ExtractedTask, ToolSummary } from "@shared/types";
 
 type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
@@ -12,9 +12,9 @@ type ServerMessage =
   | { type: "thinking_delta"; text: string }
   | { type: "replay_complete"; totalMessages?: number; oldestIndex?: number }
   | { type: "tasks"; tasks: Array<{ id: string; subject: string; activeForm?: string; status: string }> }
-  | { type: "subagent_started"; taskId: string; toolUseId: string; description: string; agentType?: string }
-  | { type: "subagent_tool_call"; toolUseId: string; toolName: string; summary: { description: string; command?: string } }
-  | { type: "subagent_completed"; taskId: string; toolUseId: string; status: string; summary: string }
+  | { type: "subagent_started"; taskId: string; toolUseId: string; description: string; agentType?: string; startedAt: number }
+  | { type: "subagent_tool_call"; toolUseId: string; toolName: string; summary: ToolSummary }
+  | { type: "subagent_completed"; taskId: string; toolUseId: string; status: "completed" | "failed" | "stopped"; summary: string }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
@@ -22,7 +22,7 @@ export interface SubagentState {
   taskId: string;
   description: string;
   agentType?: string;
-  toolCalls: Array<{ toolName: string; summary: { description: string; command?: string } }>;
+  toolCalls: Array<{ toolName: string; summary: ToolSummary }>;
   status: "running" | "completed" | "failed" | "stopped";
   summary?: string;
   startedAt: number;
@@ -279,7 +279,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 agentType: msg.agentType,
                 toolCalls: [],
                 status: "running",
-                startedAt: Date.now(),
+                startedAt: msg.startedAt,
               });
               return { activeSubagents: map };
             });
@@ -293,6 +293,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                   ...entry,
                   toolCalls: [...entry.toolCalls, { toolName: msg.toolName, summary: msg.summary }],
                 });
+              } else {
+                console.warn(`subagent_tool_call for unknown toolUseId "${msg.toolUseId}" — possible ordering issue`);
               }
               return { activeSubagents: map };
             });
@@ -302,16 +304,13 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               const map = new Map(s.activeSubagents);
               const entry = map.get(msg.toolUseId);
               if (entry) {
-                const statusMap: Record<string, SubagentState["status"]> = {
-                  completed: "completed",
-                  failed: "failed",
-                  stopped: "stopped",
-                };
                 map.set(msg.toolUseId, {
                   ...entry,
-                  status: statusMap[msg.status] ?? "completed",
+                  status: msg.status,
                   summary: msg.summary,
                 });
+              } else {
+                console.warn(`subagent_completed for unknown toolUseId "${msg.toolUseId}" — possible ordering issue`);
               }
               return { activeSubagents: map };
             });

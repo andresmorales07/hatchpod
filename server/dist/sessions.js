@@ -216,6 +216,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
                     taskId: info.taskId,
                     toolUseId: info.toolUseId,
                     description: info.description,
+                    startedAt: Date.now(),
                     ...(info.agentType ? { agentType: info.agentType } : {}),
                 });
             },

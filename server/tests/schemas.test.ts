@@ -225,14 +225,71 @@ describe("Subagent event schemas", () => {
     expect(SubagentStartedEventSchema.parse(valid)).toEqual(valid);
   });
 
+  it("rejects SubagentStartedEvent with missing taskId", () => {
+    const result = SubagentStartedEventSchema.safeParse({ toolUseId: "tu1", description: "Find files" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentStartedEvent with empty taskId", () => {
+    const result = SubagentStartedEventSchema.safeParse({ taskId: "", toolUseId: "tu1", description: "Find files" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentStartedEvent with missing toolUseId", () => {
+    const result = SubagentStartedEventSchema.safeParse({ taskId: "t1", description: "Find files" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentStartedEvent with empty description", () => {
+    const result = SubagentStartedEventSchema.safeParse({ taskId: "t1", toolUseId: "tu1", description: "" });
+    expect(result.success).toBe(false);
+  });
+
   it("validates SubagentToolCallEvent", () => {
     const valid = { toolUseId: "tu1", toolName: "Grep", summary: { description: "Search for pattern" } };
     expect(SubagentToolCallEventSchema.parse(valid)).toEqual(valid);
   });
 
+  it("rejects SubagentToolCallEvent with empty toolUseId", () => {
+    const result = SubagentToolCallEventSchema.safeParse({ toolUseId: "", toolName: "Grep", summary: { description: "x" } });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentToolCallEvent with empty toolName", () => {
+    const result = SubagentToolCallEventSchema.safeParse({ toolUseId: "tu1", toolName: "", summary: { description: "x" } });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentToolCallEvent with missing summary", () => {
+    const result = SubagentToolCallEventSchema.safeParse({ toolUseId: "tu1", toolName: "Grep" });
+    expect(result.success).toBe(false);
+  });
+
   it("validates SubagentCompletedEvent", () => {
     const valid = { taskId: "t1", toolUseId: "tu1", status: "completed", summary: "Found 3 files" };
     expect(SubagentCompletedEventSchema.parse(valid)).toEqual(valid);
+  });
+
+  it("validates SubagentCompletedEvent with all valid statuses", () => {
+    for (const status of ["completed", "failed", "stopped"] as const) {
+      const result = SubagentCompletedEventSchema.safeParse({ taskId: "t1", toolUseId: "tu1", status, summary: "Done" });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects SubagentCompletedEvent with invalid status", () => {
+    const result = SubagentCompletedEventSchema.safeParse({ taskId: "t1", toolUseId: "tu1", status: "cancelled", summary: "Done" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentCompletedEvent with missing taskId", () => {
+    const result = SubagentCompletedEventSchema.safeParse({ toolUseId: "tu1", status: "completed", summary: "Done" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects SubagentCompletedEvent with empty toolUseId", () => {
+    const result = SubagentCompletedEventSchema.safeParse({ taskId: "t1", toolUseId: "", status: "completed", summary: "Done" });
+    expect(result.success).toBe(false);
   });
 });
 

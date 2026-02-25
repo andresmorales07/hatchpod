@@ -184,6 +184,85 @@ describe("ClaudeAdapter subagent extraction", () => {
     expect(deltas).toEqual(["parent thinking"]);
   });
 
+  it("warns and does not fire onSubagentCompleted for task_notification with unknown task_id", async () => {
+    const completed: unknown[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    mockQuery.mockReturnValue(createMockHandle([
+      // No task_started — task_id "task-unknown" was never registered
+      {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "task-unknown",
+        status: "completed",
+        summary: "Done",
+      },
+      { type: "result", total_cost_usd: 0, num_turns: 0 },
+    ]));
+
+    const adapter = new ClaudeAdapter();
+    const gen = adapter.run(makeOptions({
+      onSubagentCompleted: (info) => completed.push(info),
+    }));
+    while (!(await gen.next()).done) {}
+
+    expect(completed).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("unknown task_id"));
+    warnSpy.mockRestore();
+  });
+
+  it("warns and does not fire onSubagentStarted for task_started missing tool_use_id", async () => {
+    const started: unknown[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    mockQuery.mockReturnValue(createMockHandle([
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "task-1",
+        // tool_use_id intentionally absent
+        description: "Find files",
+      },
+      { type: "result", total_cost_usd: 0, num_turns: 0 },
+    ]));
+
+    const adapter = new ClaudeAdapter();
+    const gen = adapter.run(makeOptions({
+      onSubagentStarted: (info) => started.push(info),
+    }));
+    while (!(await gen.next()).done) {}
+
+    expect(started).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("task_started missing tool_use_id"),
+      expect.anything(),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("warns for unknown system subtypes instead of silently consuming them", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    mockQuery.mockReturnValue(createMockHandle([
+      {
+        type: "system",
+        subtype: "task_paused", // hypothetical future SDK event
+        task_id: "task-1",
+      },
+      { type: "result", total_cost_usd: 0, num_turns: 0 },
+    ]));
+
+    const adapter = new ClaudeAdapter();
+    const gen = adapter.run(makeOptions());
+    while (!(await gen.next()).done) {}
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("unhandled system subtype"),
+      expect.anything(),
+    );
+    warnSpy.mockRestore();
+  });
+
   it("handles full subagent lifecycle (started → tool calls → completed)", async () => {
     const started: unknown[] = [];
     const toolCalls: unknown[] = [];

@@ -9,7 +9,7 @@ interface Props {
 }
 
 function ElapsedTime({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(() => Math.round((Date.now() - startedAt) / 1000));
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsed(Math.round((Date.now() - startedAt) / 1000));

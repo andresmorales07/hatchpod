@@ -1,5 +1,5 @@
 export type { TextPart, ToolSummary, ToolUsePart, ToolResultPart, ReasoningPart, ErrorPart, MessagePart, SlashCommand, UserMessage, AssistantMessage, SystemEvent, NormalizedMessage, TaskStatus, ExtractedTask, PaginatedMessages, SessionListItem, PermissionModeCommon, SubagentStartedEvent, SubagentToolCallEvent, SubagentCompletedEvent, } from "../schemas/index.js";
-import type { NormalizedMessage, PermissionModeCommon, PaginatedMessages, SessionListItem } from "../schemas/index.js";
+import type { NormalizedMessage, PermissionModeCommon, PaginatedMessages, SessionListItem, SubagentStartedEvent, SubagentToolCallEvent, SubagentCompletedEvent } from "../schemas/index.js";
 export interface ToolApprovalRequest {
     toolName: string;
     toolUseId: string;
@@ -24,23 +24,9 @@ export interface ProviderSessionOptions {
     resumeSessionId?: string;
     onToolApproval: (request: ToolApprovalRequest) => Promise<ApprovalDecision>;
     onThinkingDelta?: (text: string) => void;
-    onSubagentStarted?: (info: {
-        taskId: string;
-        toolUseId: string;
-        description: string;
-        agentType?: string;
-    }) => void;
-    onSubagentToolCall?: (info: {
-        toolUseId: string;
-        toolName: string;
-        summary: import("../schemas/providers.js").ToolSummary;
-    }) => void;
-    onSubagentCompleted?: (info: {
-        taskId: string;
-        toolUseId: string;
-        status: string;
-        summary: string;
-    }) => void;
+    onSubagentStarted?: (info: SubagentStartedEvent) => void;
+    onSubagentToolCall?: (info: SubagentToolCallEvent) => void;
+    onSubagentCompleted?: (info: SubagentCompletedEvent) => void;
 }
 export interface ProviderSessionResult {
     providerSessionId?: string;

@@ -258,6 +258,7 @@ async function runSession(
           taskId: info.taskId,
           toolUseId: info.toolUseId,
           description: info.description,
+          startedAt: Date.now(),
           ...(info.agentType ? { agentType: info.agentType } : {}),
         });
       },

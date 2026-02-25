@@ -101,7 +101,7 @@ describe("SessionWatcher subagent buffering", () => {
     expect(watched.activeSubagents.size).toBe(0);
   });
 
-  it("clears all subagent buffers on terminal session status", () => {
+  it("clears all subagent buffers on terminal session status (completed)", () => {
     watcher.setMode("s1", "push");
     const watched = (watcher as any).sessions.get("s1")!;
     watched.activeSubagents = new Map([
@@ -114,9 +114,51 @@ describe("SessionWatcher subagent buffering", () => {
     expect(watched.activeSubagents.size).toBe(0);
   });
 
+  it("clears all subagent buffers on terminal session status (error)", () => {
+    watcher.setMode("s1", "push");
+    const watched = (watcher as any).sessions.get("s1")!;
+    watched.activeSubagents = new Map([
+      ["tu1", { taskId: "t1", description: "Find files", toolCalls: [], startedAt: Date.now() }],
+    ]);
+
+    watcher.pushEvent("s1", { type: "status", status: "error" } as any);
+
+    expect(watched.activeSubagents.size).toBe(0);
+  });
+
+  it("clears all subagent buffers on terminal session status (interrupted)", () => {
+    watcher.setMode("s1", "push");
+    const watched = (watcher as any).sessions.get("s1")!;
+    watched.activeSubagents = new Map([
+      ["tu1", { taskId: "t1", description: "Find files", toolCalls: [], startedAt: Date.now() }],
+    ]);
+
+    watcher.pushEvent("s1", { type: "status", status: "interrupted" } as any);
+
+    expect(watched.activeSubagents.size).toBe(0);
+  });
+
+  it("warns and no-ops for subagent_tool_call with unknown toolUseId", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    watcher.setMode("s1", "push");
+
+    watcher.pushEvent("s1", {
+      type: "subagent_tool_call",
+      toolUseId: "tu-unknown",
+      toolName: "Grep",
+      summary: { description: "Search for pattern" },
+    });
+
+    const watched = (watcher as any).sessions.get("s1")!;
+    expect(watched.activeSubagents.size).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("unknown toolUseId"));
+    warnSpy.mockRestore();
+  });
+
   it("replays active subagent state to new subscribers", async () => {
     watcher.setMode("s1", "push");
     const watched = (watcher as any).sessions.get("s1")!;
+    const startedAt = Date.now() - 5000; // 5 seconds ago
     watched.activeSubagents = new Map([
       ["tu1", {
         taskId: "t1", description: "Find files", agentType: "Explore",
@@ -124,7 +166,7 @@ describe("SessionWatcher subagent buffering", () => {
           { toolName: "Grep", summary: { description: "Search for auth" } },
           { toolName: "Read", summary: { description: "/src/auth.ts" } },
         ],
-        startedAt: Date.now(),
+        startedAt,
       }],
     ]);
 
@@ -136,6 +178,11 @@ describe("SessionWatcher subagent buffering", () => {
     expect(types).toContain("subagent_started");
     expect(types.filter((t: string) => t === "subagent_tool_call")).toHaveLength(2);
     expect(types[types.length - 1]).toBe("replay_complete");
+
+    // Replayed subagent_started must include the original startedAt (not current time)
+    const startedMsg = ws._messages.find((m: any) => m.type === "subagent_started");
+    expect(startedMsg).toBeDefined();
+    expect((startedMsg as any).startedAt).toBe(startedAt);
   });
 
   it("does not replay subagent state after completion", async () => {
