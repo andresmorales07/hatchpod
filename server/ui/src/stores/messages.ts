@@ -54,9 +54,13 @@ interface MessagesState {
 const MAX_RECONNECT_ATTEMPTS = 10;
 const BASE_RECONNECT_MS = 1000;
 const MESSAGE_LIMIT = 50;
+// If no message (including server pings) arrives within this window, assume connection is dead.
+// Server pings every 30s, so 45s gives 1.5× tolerance for network jitter.
+const HEARTBEAT_TIMEOUT_MS = 45_000;
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
 let thinkingStart: number | null = null;
 let currentSessionId: string | null = null;
@@ -64,6 +68,16 @@ let currentSessionId: string | null = null;
 // the still-valid WebSocket connection during React navigation
 let _redirectingTo: string | null = null;
 let _redirectTimeout: ReturnType<typeof setTimeout> | undefined;
+
+function resetHeartbeat(): void {
+  clearTimeout(heartbeatTimer);
+  heartbeatTimer = setTimeout(() => {
+    // No message received within the timeout window — connection is likely dead.
+    // Closing the socket triggers onclose → reconnect logic.
+    console.warn("WebSocket heartbeat timeout — closing connection");
+    ws?.close();
+  }, HEARTBEAT_TIMEOUT_MS);
+}
 
 function send(msg: unknown): boolean {
   if (ws?.readyState === WebSocket.OPEN) {
@@ -131,9 +145,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         socket.send(JSON.stringify({ type: "auth", token, messageLimit: MESSAGE_LIMIT }));
         set({ connected: true, lastError: null });
         reconnectAttempts = 0;
+        resetHeartbeat();
       };
 
       socket.onmessage = (event) => {
+        resetHeartbeat();
         let msg: ServerMessage;
         try { msg = JSON.parse(event.data); } catch (err) {
           console.error("Failed to parse WebSocket message:", err);
@@ -245,6 +261,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       socket.onclose = () => {
         ws = null;
         _redirectingTo = null;
+        clearTimeout(heartbeatTimer);
         // Only update state if this socket belongs to the current session
         if (currentSessionId !== sessionId) return;
         set({ connected: false });
@@ -274,6 +291,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     if (_redirectingTo !== null) return;
     currentSessionId = null;
     clearTimeout(reconnectTimer);
+    clearTimeout(heartbeatTimer);
     reconnectAttempts = 0;
     ws?.close();
     ws = null;

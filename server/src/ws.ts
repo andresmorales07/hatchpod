@@ -99,10 +99,22 @@ function setupSessionConnection(ws: WebSocket, sessionId: string, messageLimit?:
     } satisfies ServerMessage));
   }
 
-  // Ping keepalive every 30s
+  // Heartbeat: protocol-level ping detects dead clients, JSON ping keeps client watchdog alive.
+  // The `ws` library auto-replies with pong when it receives a protocol ping from the browser,
+  // and the browser auto-replies with pong when it receives our protocol ping.
+  let isAlive = true;
+  ws.on("pong", () => { isAlive = true; });
+
   const pingInterval = setInterval(() => {
+    if (!isAlive) {
+      // No pong received since last ping — connection is dead
+      ws.terminate();
+      return;
+    }
+    isAlive = false;
     if (ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: "ping" } satisfies ServerMessage));
+      ws.ping();  // Protocol-level ping (browser auto-replies with pong)
+      ws.send(JSON.stringify({ type: "ping" } satisfies ServerMessage));  // Application-level for client watchdog
     }
   }, 30_000);
 
