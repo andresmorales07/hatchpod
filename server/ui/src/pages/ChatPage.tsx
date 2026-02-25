@@ -7,6 +7,7 @@ import { MessageBubble } from "@/components/MessageBubble";
 import { ToolApproval } from "@/components/ToolApproval";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Composer } from "@/components/Composer";
+import { GitDiffBar } from "@/components/GitDiffBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ContextUsageBadge } from "@/components/ContextUsageBadge";
@@ -43,7 +44,7 @@ export function ChatPage() {
     messages, slashCommands, status, source, connected, pendingApproval, lastError,
     thinkingText, thinkingStartTime,
     hasOlderMessages, loadingOlderMessages, loadOlderMessages, serverTasks,
-    isCompacting, contextUsage,
+    isCompacting, contextUsage, gitDiffStat,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
@@ -279,6 +280,11 @@ export function ChatPage() {
         onSend={(text) => { const ok = sendPrompt(text); if (ok) setIsAtBottom(true); return ok; }}
         onInterrupt={interrupt}
       />
+
+      {/* Git diff status bar */}
+      {gitDiffStat && gitDiffStat.files.length > 0 && (
+        <GitDiffBar stat={gitDiffStat} />
+      )}
     </div>
   );
 }
