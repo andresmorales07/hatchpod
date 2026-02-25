@@ -2,7 +2,7 @@ import type { NormalizedMessage, ExtractedTask } from "./providers/types.js";
 export type { ExtractedTask };
 /**
  * Extract task state from an array of normalized messages.
- * Mirrors the client-side logic in ChatPage.tsx — scans tool_use/tool_result
- * parts for TaskCreate and TaskUpdate calls to build a task list.
+ * Scans for TodoWrite tool_use parts — each call carries the full
+ * todo list, so only the last one determines current state.
  */
 export declare function extractTasks(messages: NormalizedMessage[]): ExtractedTask[];

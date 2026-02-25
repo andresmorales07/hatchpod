@@ -145,26 +145,21 @@ describe("ClaudeAdapter.getMessages", () => {
       message: { role: "user", content: "Create a task" },
       timestamp: "2026-02-20T10:00:01.000Z",
     }));
-    // Assistant creates a task with TaskCreate tool
+    // Assistant creates tasks with TodoWrite tool
     lines.push(JSON.stringify({
       type: "assistant", sessionId: sid,
       message: {
         role: "assistant", type: "message",
         content: [{
-          type: "tool_use", id: "tu_task1", name: "TaskCreate",
-          input: { subject: "Write unit tests", status: "in_progress" },
+          type: "tool_use", id: "tu_todo1", name: "TodoWrite",
+          input: {
+            todos: [
+              { content: "Write unit tests", status: "in_progress", activeForm: "Writing unit tests" },
+            ],
+          },
         }],
       },
       timestamp: "2026-02-20T10:00:02.000Z",
-    }));
-    // Tool result with task ID
-    lines.push(JSON.stringify({
-      type: "user", sessionId: sid,
-      message: {
-        role: "user",
-        content: [{ type: "tool_result", tool_use_id: "tu_task1", content: "Task #42 created" }],
-      },
-      timestamp: "2026-02-20T10:00:03.000Z",
     }));
     // More messages after the task (these will be in the page)
     for (let i = 0; i < 5; i++) {
@@ -180,7 +175,7 @@ describe("ClaudeAdapter.getMessages", () => {
     await writeFile(join(fakeProjectDir, `${sid}.jsonl`), lines.join("\n") + "\n");
 
     const adapter = new ClaudeAdapter();
-    // Request only the last 3 messages (won't include TaskCreate)
+    // Request only the last 3 messages (won't include TodoWrite)
     const result = await adapter.getMessages(sid, { limit: 3 });
 
     expect(result.messages).toHaveLength(3);

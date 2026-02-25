@@ -113,7 +113,6 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       slashCommands: [],
       thinkingText: "",
       thinkingStartTime: null,
-      thinkingDurations: {},
       lastError: null,
       hasOlderMessages: false,
       loadingOlderMessages: false,
@@ -145,8 +144,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           case "message": {
             const m = msg.message;
             if (m.role === "assistant" && m.parts.some((p) => p.type === "reasoning")) {
-              thinkingStart = null;
-              set({ thinkingText: "", thinkingStartTime: null });
+              // Clear thinking TEXT but keep thinkingStartTime — the indicator
+              // stays visible with "Thinking" while status is still "running".
+              set({ thinkingText: "" });
             }
             // Server guarantees no duplicates — single delivery path via watcher.
             set((s) => ({ messages: [...s.messages, m] }));
@@ -169,12 +169,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             break;
           }
           case "status": {
-            // Only clear thinking on terminal states — not on intermediate
-            // statuses like "waiting_for_approval" which can arrive while the
-            // model is still generating thinking content.
             const isTerminal = msg.status === "completed" || msg.status === "error"
               || msg.status === "idle" || msg.status === "interrupted"
               || msg.status === "disconnected" || msg.status === "history";
+            const isRunningStatus = msg.status === "running" || msg.status === "starting";
             if (isTerminal) {
               thinkingStart = null;
               set({
@@ -182,6 +180,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 ...(msg.source ? { source: msg.source } : {}),
                 thinkingText: "",
                 thinkingStartTime: null,
+              });
+            } else if (isRunningStatus) {
+              // Entering/re-entering running state — start the processing timer.
+              // This makes the thinking indicator visible for the entire "running"
+              // phase, not just when thinking_delta events stream in.
+              thinkingStart = Date.now();
+              set({
+                status: msg.status,
+                ...(msg.source ? { source: msg.source } : {}),
+                thinkingStartTime: thinkingStart,
+                thinkingText: "",
               });
             } else {
               set({

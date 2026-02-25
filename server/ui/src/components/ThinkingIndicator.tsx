@@ -1,10 +1,16 @@
 import { useState, useEffect } from "react";
 
+/** Short CLI-style snippet — just a brief hint, not a full sentence. */
 function extractSnippet(text: string): string {
-  if (!text.trim()) return "Thinking...";
+  if (!text.trim()) return "Thinking";
   const lines = text.split("\n").filter((l) => l.trim());
-  const last = lines[lines.length - 1] || "Thinking...";
-  return last.length > 80 ? last.slice(0, 77) + "..." : last;
+  const last = (lines[lines.length - 1] || "").trim();
+  if (!last) return "Thinking";
+  // Truncate to a short descriptor, break at word boundary
+  if (last.length <= 30) return last;
+  const cut = last.slice(0, 30);
+  const space = cut.lastIndexOf(" ");
+  return (space > 10 ? cut.slice(0, space) : cut) + "\u2026";
 }
 
 interface Props {

@@ -33,25 +33,6 @@ function isValidTaskStatus(value: unknown): value is TaskStatus {
   return typeof value === "string" && VALID_TASK_STATUSES.has(value as TaskStatus);
 }
 
-function parseTaskCreate(input: unknown): { subject: string; activeForm?: string } {
-  if (input == null || typeof input !== "object" || Array.isArray(input)) {
-    return { subject: "Untitled task" };
-  }
-  const rec = input as Record<string, unknown>;
-  return {
-    subject: typeof rec.subject === "string" ? rec.subject : "Untitled task",
-    activeForm: typeof rec.activeForm === "string" ? rec.activeForm : undefined,
-  };
-}
-
-function applyTaskUpdate(existing: ExtractedTask, input: unknown): void {
-  if (input == null || typeof input !== "object" || Array.isArray(input)) return;
-  const rec = input as Record<string, unknown>;
-  if (isValidTaskStatus(rec.status)) existing.status = rec.status;
-  if (typeof rec.subject === "string") existing.subject = rec.subject;
-  if (typeof rec.activeForm === "string") existing.activeForm = rec.activeForm;
-}
-
 export function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -95,49 +76,30 @@ export function ChatPage() {
     return map;
   }, [messages]);
 
-  // Extract tasks from live messages (those after initial replay) and merge with server tasks
+  // Extract tasks from live messages and merge with server tasks.
+  // TodoWrite carries the full todo list on each call — only the last one matters.
   const tasks = useMemo(() => {
-    // Start with a map from server-provided tasks
-    const taskMap = new Map<string, ExtractedTask>();
-    for (const t of serverTasks) {
-      taskMap.set(t.id, { ...t });
-    }
+    // Start with server-provided tasks (from replay)
+    let latestTodos: ExtractedTask[] = serverTasks.map((t) => ({ ...t }));
 
-    // Layer on tasks from live messages (client-side extraction for messages after replay)
-    const pendingCreates = new Map<string, ExtractedTask>();
+    // Scan live messages for TodoWrite calls — last one wins
     for (const msg of messages) {
       if (msg.role === "system") continue;
       for (const part of msg.parts) {
-        if (part.type === "tool_use" && part.toolName === "TaskCreate") {
-          const { subject, activeForm } = parseTaskCreate(part.input);
-          const item: ExtractedTask = { id: part.toolUseId, subject, activeForm, status: "pending" };
-          pendingCreates.set(part.toolUseId, item);
-        }
-        if (part.type === "tool_result") {
-          const pending = pendingCreates.get(part.toolUseId);
-          if (pending) {
-            const match = part.output.match(/Task #(\d+)/);
-            const taskId = match ? match[1] : part.toolUseId;
-            pending.id = taskId;
-            taskMap.set(taskId, pending);
-            pendingCreates.delete(part.toolUseId);
-          }
-        }
-        if (part.type === "tool_use" && part.toolName === "TaskUpdate") {
-          const input = part.input;
-          const taskId = input != null && typeof input === "object" && !Array.isArray(input)
-            ? (input as Record<string, unknown>).taskId
-            : undefined;
-          if (typeof taskId === "string" && taskMap.has(taskId)) {
-            applyTaskUpdate(taskMap.get(taskId)!, input);
+        if (part.type === "tool_use" && part.toolName === "TodoWrite") {
+          const input = part.input as Record<string, unknown> | undefined;
+          if (input && Array.isArray(input.todos)) {
+            latestTodos = (input.todos as Array<Record<string, unknown>>).map((todo, i) => ({
+              id: String(i + 1),
+              subject: typeof todo.content === "string" ? todo.content : "Untitled task",
+              activeForm: typeof todo.activeForm === "string" ? todo.activeForm : undefined,
+              status: isValidTaskStatus(todo.status) ? todo.status : "pending",
+            }));
           }
         }
       }
     }
-    for (const item of pendingCreates.values()) {
-      taskMap.set(item.id, item);
-    }
-    return Array.from(taskMap.values()).filter((t) => t.status !== "deleted");
+    return latestTodos.filter((t) => t.status !== "deleted");
   }, [messages, serverTasks]);
 
   useEffect(() => {
@@ -196,8 +158,10 @@ export function ChatPage() {
     }
   }, [hasOlderMessages, loadingOlderMessages, loadOlderMessages]);
 
-  const isThinkingActive = thinkingText.length > 0 && thinkingStartTime != null;
   const isRunning = status === "running" || status === "starting";
+  // Show indicator for the entire "running" phase — not just when thinking text streams in.
+  // Thinking text provides detail; the indicator itself shows "Thinking" as a baseline.
+  const isThinkingActive = isRunning && !pendingApproval && thinkingStartTime != null;
   const isViewerMode = source === "cli" && !isRunning;
   const sessionName = activeSession?.summary || activeSession?.slug || id?.slice(0, 8) || "Chat";
   const visibleError = lastError && lastError !== dismissedError ? lastError : null;

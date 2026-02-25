@@ -175,29 +175,27 @@ describe("GET /api/sessions/:id/messages — pagination", () => {
 
   it("extracts tasks from FULL message set, not just the page", async () => {
     const sid = randomUUID();
-    // Create a session with a TaskCreate in early messages
-    const taskCreateLine = JSON.stringify({
+    // Create a session with a TodoWrite in early messages
+    const todoWriteLine = JSON.stringify({
       type: "assistant",
       sessionId: sid,
       message: {
         role: "assistant",
         type: "message",
         content: [
-          { type: "tool_use", id: "tu_task1", name: "TaskCreate", input: { subject: "Implement auth" } },
+          {
+            type: "tool_use",
+            id: "tu_todo1",
+            name: "TodoWrite",
+            input: {
+              todos: [
+                { content: "Implement auth", status: "in_progress", activeForm: "Implementing auth" },
+              ],
+            },
+          },
         ],
       },
       timestamp: "2026-02-20T10:00:01.000Z",
-    });
-    const taskResultLine = JSON.stringify({
-      type: "user",
-      sessionId: sid,
-      message: {
-        role: "user",
-        content: [
-          { type: "tool_result", tool_use_id: "tu_task1", content: "Task #1 created", is_error: false },
-        ],
-      },
-      timestamp: "2026-02-20T10:00:02.000Z",
     });
 
     // Then add enough later messages that pagination excludes the task messages
@@ -223,8 +221,7 @@ describe("GET /api/sessions/:id/messages — pagination", () => {
 
     const content = [
       JSON.stringify({ type: "progress", sessionId: sid, cwd: "/home/user/workspace", timestamp: "2026-02-20T10:00:00.000Z" }),
-      taskCreateLine,
-      taskResultLine,
+      todoWriteLine,
       ...laterLines,
     ].join("\n") + "\n";
     await writeFile(join(fakeProjectDir, `${sid}.jsonl`), content);
