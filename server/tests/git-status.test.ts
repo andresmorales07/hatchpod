@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach } from "vitest";
 import { GitDiffStatSchema } from "../src/schemas/git.js";
 import { computeGitDiffStat } from "../src/git-status.js";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -111,5 +111,35 @@ describe("computeGitDiffStat", () => {
     const result = await computeGitDiffStat(repoDir);
     expect(result).not.toBeNull();
     expect(result!.files.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ── REST endpoint tests ──
+
+import { startServer, stopServer, api, rawFetch } from "./helpers.js";
+
+describe("GET /api/git/status", () => {
+  beforeAll(async () => { await startServer(); });
+  afterAll(async () => { await stopServer(); });
+
+  it("returns git diff stat for a valid git repo", async () => {
+    const cwd = process.cwd();
+    const res = await api(`/api/git/status?cwd=${encodeURIComponent(cwd)}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("files");
+    expect(body).toHaveProperty("totalInsertions");
+    expect(body).toHaveProperty("totalDeletions");
+    expect(Array.isArray(body.files)).toBe(true);
+  });
+
+  it("returns 400 when cwd is missing", async () => {
+    const res = await api("/api/git/status");
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    const res = await rawFetch("/api/git/status?cwd=.");
+    expect(res.status).toBe(401);
   });
 });

@@ -11,6 +11,7 @@ import {
 } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
 import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument } from "./schemas/index.js";
+import { computeGitDiffStat } from "./git-status.js";
 import { SERVER_VERSION } from "./version.js";
 
 const startTime = Date.now();
@@ -305,6 +306,31 @@ export async function handleRequest(
   // GET /api/providers — list registered providers
   if (pathname === "/api/providers" && method === "GET") {
     json(res, 200, listProviders());
+    return;
+  }
+
+  // GET /api/git/status — git diff stat for a directory
+  if (pathname === "/api/git/status" && method === "GET") {
+    const cwd = url.searchParams.get("cwd");
+    if (!cwd) {
+      json(res, 400, { error: "cwd query parameter is required" });
+      return;
+    }
+    if (cwd.includes("\0") || !isPathContained(BROWSE_ROOT, cwd)) {
+      json(res, 400, { error: "cwd must be within the workspace" });
+      return;
+    }
+    try {
+      const stat = await computeGitDiffStat(cwd);
+      if (!stat) {
+        json(res, 404, { error: "not a git repository" });
+        return;
+      }
+      json(res, 200, stat);
+    } catch (err) {
+      console.error("git status error:", err);
+      json(res, 500, { error: "internal server error" });
+    }
     return;
   }
 

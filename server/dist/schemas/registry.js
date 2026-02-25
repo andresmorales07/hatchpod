@@ -5,6 +5,7 @@ import { ErrorResponseSchema } from "./common.js";
 import { HealthResponseSchema } from "./health.js";
 import { ConfigResponseSchema, ProviderInfoSchema } from "./config.js";
 import { BrowseResponseSchema } from "./browse.js";
+import { GitDiffStatSchema } from "./git.js";
 import { NormalizedMessageSchema, PaginatedMessagesSchema, SessionListItemSchema, } from "./providers.js";
 import { CreateSessionRequestSchema, CreateSessionResponseSchema, DeleteSessionResponseSchema, SessionDetailResponseSchema, SessionSummaryDTOSchema, } from "./sessions.js";
 const registry = new OpenAPIRegistry();
@@ -291,6 +292,38 @@ registry.registerPath({
         },
         404: {
             description: "Directory not found",
+            content: { "application/json": { schema: ErrorResponseSchema } },
+        },
+    },
+});
+registry.registerPath({
+    method: "get",
+    path: "/api/git/status",
+    summary: "Git diff status",
+    description: "Returns a compact summary of all uncommitted git changes (staged, unstaged, untracked) " +
+        "in the given directory. Returns 404 if the directory is not a git repository.",
+    tags: ["Git"],
+    security: [{ [bearerAuth.name]: [] }],
+    request: {
+        query: z.object({
+            cwd: z.string().openapi({ description: "Absolute path to the working directory" }),
+        }),
+    },
+    responses: {
+        200: {
+            description: "Git diff statistics",
+            content: { "application/json": { schema: GitDiffStatSchema } },
+        },
+        400: {
+            description: "Missing or invalid cwd",
+            content: { "application/json": { schema: ErrorResponseSchema } },
+        },
+        401: {
+            description: "Unauthorized",
+            content: { "application/json": { schema: ErrorResponseSchema } },
+        },
+        404: {
+            description: "Not a git repository",
             content: { "application/json": { schema: ErrorResponseSchema } },
         },
     },

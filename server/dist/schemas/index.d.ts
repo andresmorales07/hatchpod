@@ -6,4 +6,6 @@ export type { SessionStatus, CreateSessionRequest, SessionSummaryDTO, } from "./
 export { BrowseResponseSchema } from "./browse.js";
 export { ConfigResponseSchema, ProviderInfoSchema } from "./config.js";
 export { HealthResponseSchema } from "./health.js";
+export { GitFileStatSchema, GitDiffStatSchema } from "./git.js";
+export type { GitFileStat, GitDiffStat } from "./git.js";
 export { openApiDocument } from "./registry.js";
