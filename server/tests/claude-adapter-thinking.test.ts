@@ -186,7 +186,7 @@ describe("ClaudeAdapter stream_event thinking extraction", () => {
     );
 
     const messages = [];
-    while (true) {
+    for (;;) {
       const next = await gen.next();
       if (next.done) break;
       messages.push(next.value);
@@ -241,7 +241,7 @@ describe("ClaudeAdapter stream_event thinking extraction", () => {
     );
 
     const messages = [];
-    while (true) {
+    for (;;) {
       const next = await gen.next();
       if (next.done) break;
       messages.push(next.value);
@@ -252,6 +252,7 @@ describe("ClaudeAdapter stream_event thinking extraction", () => {
 
     // First should have injected reasoning
     expect(assistantMsgs[0].parts.some((p) => p.type === "reasoning")).toBe(true);
+    expect(assistantMsgs[0].parts.find((p) => p.type === "reasoning")?.text).toBe("First thought.");
 
     // Second should NOT have reasoning (accumulated thinking was already consumed)
     expect(assistantMsgs[1].parts.some((p) => p.type === "reasoning")).toBe(false);

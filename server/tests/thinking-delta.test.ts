@@ -88,7 +88,9 @@ describe("Thinking Deltas", () => {
   it("buffers thinking_delta for late-connecting subscribers (new session with prompt)", async () => {
     // Create session WITH a thinking prompt — runSession() starts immediately
     // and begins emitting thinking_delta events before any WS client connects.
-    // The adapter's 50ms delays mean some deltas fire before we can subscribe.
+    // Whether or not deltas fired before WS connected, the buffer guarantees
+    // we receive the complete concatenated text. This test validates that
+    // guarantee under real async scheduling.
     const createRes = await api("/api/sessions", {
       method: "POST",
       body: JSON.stringify({ provider: "test", prompt: "[thinking] buffered test" }),
@@ -109,6 +111,13 @@ describe("Thinking Deltas", () => {
     const thinkingDeltas = messages.filter((m) => m.type === "thinking_delta") as Array<{ type: string; text: string }>;
     const allText = thinkingDeltas.map((d) => d.text).join("");
     expect(allText).toBe("I need to analyze this request carefully.");
+
+    // thinking_delta must arrive before replay_complete (ordering guarantee)
+    const firstThinkingIdx = messages.findIndex((m) => m.type === "thinking_delta");
+    const replayCompleteIdx = messages.findIndex((m) => m.type === "replay_complete");
+    if (firstThinkingIdx >= 0 && replayCompleteIdx >= 0) {
+      expect(firstThinkingIdx).toBeLessThan(replayCompleteIdx);
+    }
 
     ws.close();
   });

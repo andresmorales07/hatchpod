@@ -28,8 +28,10 @@ interface WatchedSession {
   /**
    * Accumulated thinking text from thinking_delta events.
    * Buffers text for late-connecting subscribers so they see the
-   * ThinkingIndicator even if they miss the live stream. Cleared
-   * when the finalized assistant message (with reasoning part) arrives.
+   * ThinkingIndicator even if they miss the live stream. Cleared when:
+   * - An assistant message with a `reasoning` part arrives via pushMessage()
+   * - A terminal status event (completed/error/interrupted) arrives via pushEvent()
+   * Assistant messages without a reasoning part do NOT clear the buffer.
    */
   pendingThinkingText: string;
 }
@@ -72,20 +74,20 @@ export class SessionWatcher {
 
     if (watched) {
       watched.clients.add(client);
-      // Replay from best available source
+      // Snapshot thinking text before any await — pushMessage() can clear
+      // pendingThinkingText during the replayFromFile() suspension.
+      const thinkingSnapshot = watched.pendingThinkingText;
+      // Replay from best available source (thinking_delta is sent before
+      // replay_complete inside the replay methods)
       if (watched.messages.length > 0) {
-        this.replayFromMemory(watched, client, messageLimit);
+        this.replayFromMemory(watched, client, messageLimit, thinkingSnapshot);
       } else {
         // Re-resolve file path if it was null at initial subscribe time
         if (!watched.filePath) {
           const filePath = await this.adapter.getSessionFilePath(sessionId);
           if (filePath) watched.filePath = filePath;
         }
-        await this.replayFromFile(sessionId, watched, client, messageLimit);
-      }
-      // Replay buffered thinking text for late-connecting subscribers
-      if (watched.pendingThinkingText) {
-        this.send(client, { type: "thinking_delta", text: watched.pendingThinkingText });
+        await this.replayFromFile(sessionId, watched, client, messageLimit, thinkingSnapshot);
       }
       return;
     }
@@ -196,6 +198,9 @@ export class SessionWatcher {
    * Broadcast an ephemeral event to all subscribers of a session.
    * Unlike pushMessage(), this does NOT store the event in messages[] —
    * used for status changes, thinking deltas, approval requests, etc.
+   *
+   * Exception: thinking_delta events are also buffered in pendingThinkingText
+   * so late-connecting subscribers receive accumulated thinking text on subscribe().
    */
   pushEvent(sessionId: string, event: ServerMessage): void {
     const watched = this.sessions.get(sessionId);
@@ -211,8 +216,14 @@ export class SessionWatcher {
     // Buffer thinking text so late-connecting subscribers can catch up
     if (event.type === "thinking_delta") {
       watched.pendingThinkingText += event.text;
-      if (watched.clients.size === 0) {
-        console.warn(`SessionWatcher.pushEvent(${sessionId}): thinking_delta dropped — 0 clients`);
+    }
+
+    // Clear thinking buffer on terminal status — prevents stale thinking
+    // text from being replayed after session completion or error
+    if (event.type === "status") {
+      const status = (event as { status: string }).status;
+      if (status === "completed" || status === "error" || status === "interrupted") {
+        watched.pendingThinkingText = "";
       }
     }
 
@@ -300,11 +311,13 @@ export class SessionWatcher {
   /**
    * Replay messages from in-memory store to a single client. Supports
    * pagination via messageLimit (returns the most recent N messages).
+   * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
    */
   private replayFromMemory(
     watched: WatchedSession,
     client: WebSocket,
     messageLimit?: number,
+    pendingThinking?: string,
   ): void {
     const allMessages = watched.messages;
     const total = allMessages.length;
@@ -319,6 +332,9 @@ export class SessionWatcher {
       this.send(client, { type: "message", message: msg });
     }
 
+    if (pendingThinking) {
+      this.send(client, { type: "thinking_delta", text: pendingThinking });
+    }
     this.send(client, {
       type: "replay_complete",
       totalMessages: total,
@@ -329,15 +345,20 @@ export class SessionWatcher {
   /**
    * Replay messages from JSONL file via adapter.getMessages(), then
    * sync watcher state and send replay_complete.
+   * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
    */
   private async replayFromFile(
     sessionId: string,
     watched: WatchedSession,
     client: WebSocket,
     messageLimit?: number,
+    pendingThinking?: string,
   ): Promise<void> {
     // No file to replay (e.g., test adapter) — just signal replay is done
     if (!watched.filePath) {
+      if (pendingThinking) {
+        this.send(client, { type: "thinking_delta", text: pendingThinking });
+      }
       this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       return;
     }
@@ -359,10 +380,16 @@ export class SessionWatcher {
       });
     } catch (err) {
       if (err instanceof Error && err.name === "SessionNotFound") {
+        if (pendingThinking) {
+          this.send(client, { type: "thinking_delta", text: pendingThinking });
+        }
         this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
         return;
       }
       this.send(client, { type: "error", message: "failed to load message history" });
+      if (pendingThinking) {
+        this.send(client, { type: "thinking_delta", text: pendingThinking });
+      }
       this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       throw err;
     }
@@ -389,7 +416,10 @@ export class SessionWatcher {
       this.send(client, { type: "tasks", tasks: result.tasks });
     }
 
-    // 4. Send replay_complete with pagination metadata
+    // 4. Send buffered thinking text, then replay_complete
+    if (pendingThinking) {
+      this.send(client, { type: "thinking_delta", text: pendingThinking });
+    }
     this.send(client, {
       type: "replay_complete",
       totalMessages: result.totalMessages,

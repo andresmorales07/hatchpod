@@ -1048,4 +1048,185 @@ describe("SessionWatcher", () => {
       watcher.stop();
     });
   });
+
+  describe("pendingThinkingText buffer", () => {
+    it("accumulates thinking_delta text and replays to late-connecting subscriber", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-thinking-buffer";
+      watcher.setMode(sessionId, "push");
+
+      // Push thinking deltas with NO clients connected
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "First " });
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "thought." });
+
+      // Late-connecting subscriber should receive concatenated buffer
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const thinkingEvents = sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(thinkingEvents).toHaveLength(1);
+      expect(thinkingEvents[0].text).toBe("First thought.");
+
+      watcher.stop();
+    });
+
+    it("sends thinking_delta before replay_complete", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-thinking-order";
+      watcher.setMode(sessionId, "push");
+
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "buffered" });
+
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const parsed = sent.map((s) => JSON.parse(s));
+      const thinkingIdx = parsed.findIndex((e: { type: string }) => e.type === "thinking_delta");
+      const replayIdx = parsed.findIndex((e: { type: string }) => e.type === "replay_complete");
+      expect(thinkingIdx).toBeGreaterThanOrEqual(0);
+      expect(replayIdx).toBeGreaterThan(thinkingIdx);
+
+      watcher.stop();
+    });
+
+    it("clears buffer when pushMessage receives assistant with reasoning part", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-clear-thinking";
+      watcher.setMode(sessionId, "push");
+
+      // Accumulate thinking deltas (no clients)
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "accumulated" });
+
+      // Push assistant message WITH reasoning part — buffer should clear
+      watcher.pushMessage(sessionId, {
+        role: "assistant",
+        parts: [
+          { type: "reasoning", text: "accumulated" },
+          { type: "text", text: "answer" },
+        ],
+        index: 0,
+      });
+
+      // Late subscriber should NOT receive a thinking_delta replay
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const thinkingEvents = sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(thinkingEvents).toHaveLength(0);
+
+      watcher.stop();
+    });
+
+    it("does NOT clear buffer when assistant message lacks reasoning part", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-no-clear";
+      watcher.setMode(sessionId, "push");
+
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "still buffered" });
+
+      // Push assistant message WITHOUT reasoning part
+      watcher.pushMessage(sessionId, {
+        role: "assistant",
+        parts: [{ type: "text", text: "partial answer" }],
+        index: 0,
+      });
+
+      // Buffer should remain — late subscriber still gets the thinking delta
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const thinkingEvents = sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(thinkingEvents).toHaveLength(1);
+      expect(thinkingEvents[0].text).toBe("still buffered");
+
+      watcher.stop();
+    });
+
+    it("clears buffer on terminal status event (completed)", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-clear-on-complete";
+      watcher.setMode(sessionId, "push");
+
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "stale thinking" });
+      watcher.pushEvent(sessionId, { type: "status", status: "completed" });
+
+      // Late subscriber should NOT get stale thinking text
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const thinkingEvents = sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(thinkingEvents).toHaveLength(0);
+
+      watcher.stop();
+    });
+
+    it("clears buffer on terminal status event (error)", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-clear-on-error";
+      watcher.setMode(sessionId, "push");
+
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "failed thinking" });
+      watcher.pushEvent(sessionId, { type: "status", status: "error" });
+
+      const { ws, sent } = createMockWs();
+      await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
+
+      const thinkingEvents = sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(thinkingEvents).toHaveLength(0);
+
+      watcher.stop();
+    });
+
+    it("does not send thinking_delta to already-connected clients via replay", async () => {
+      const fileMap = new Map<string, string>();
+      const adapter = createMockAdapter(fileMap);
+      const watcher = new SessionWatcher(adapter);
+
+      const sessionId = "sess-no-dup";
+      watcher.setMode(sessionId, "push");
+
+      // Client A connects before thinking starts — receives live broadcasts
+      const clientA = createMockWs();
+      await watcher.subscribe(sessionId, clientA.ws as unknown as import("ws").WebSocket);
+      clientA.sent.length = 0;
+
+      // Push thinking deltas — client A gets them via broadcast
+      watcher.pushEvent(sessionId, { type: "thinking_delta", text: "live delta" });
+      expect(clientA.sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta")).toHaveLength(1);
+
+      // Client B connects late — should get consolidated buffer via replay only
+      const clientB = createMockWs();
+      clientA.sent.length = 0;
+      await watcher.subscribe(sessionId, clientB.ws as unknown as import("ws").WebSocket);
+
+      // Client B gets the buffered thinking_delta
+      const clientBThinking = clientB.sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(clientBThinking).toHaveLength(1);
+      expect(clientBThinking[0].text).toBe("live delta");
+
+      // Client A should NOT have received a duplicate thinking_delta from the replay
+      const clientAThinking = clientA.sent.map((s) => JSON.parse(s)).filter((e: { type: string }) => e.type === "thinking_delta");
+      expect(clientAThinking).toHaveLength(0);
+
+      watcher.stop();
+    });
+  });
 });

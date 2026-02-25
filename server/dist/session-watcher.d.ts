@@ -62,6 +62,9 @@ export declare class SessionWatcher {
      * Broadcast an ephemeral event to all subscribers of a session.
      * Unlike pushMessage(), this does NOT store the event in messages[] —
      * used for status changes, thinking deltas, approval requests, etc.
+     *
+     * Exception: thinking_delta events are also buffered in pendingThinkingText
+     * so late-connecting subscribers receive accumulated thinking text on subscribe().
      */
     pushEvent(sessionId: string, event: ServerMessage): void;
     /**
@@ -85,11 +88,13 @@ export declare class SessionWatcher {
     /**
      * Replay messages from in-memory store to a single client. Supports
      * pagination via messageLimit (returns the most recent N messages).
+     * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
      */
     private replayFromMemory;
     /**
      * Replay messages from JSONL file via adapter.getMessages(), then
      * sync watcher state and send replay_complete.
+     * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
      */
     private replayFromFile;
     /** Single poll cycle: check all watched sessions for new data. */
