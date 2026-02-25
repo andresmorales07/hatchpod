@@ -138,6 +138,13 @@ export declare const SystemEventSchema: z.ZodObject<{
             description: z.ZodString;
             argumentHint: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"compact_boundary">;
+        trigger: z.ZodEnum<{
+            manual: "manual";
+            auto: "auto";
+        }>;
+        preTokens: z.ZodNumber;
     }, z.core.$strip>], "type">;
     index: z.ZodNumber;
 }, z.core.$strip>;
@@ -214,6 +221,13 @@ export declare const NormalizedMessageSchema: z.ZodDiscriminatedUnion<[z.ZodObje
             description: z.ZodString;
             argumentHint: z.ZodOptional<z.ZodString>;
         }, z.core.$strip>>;
+    }, z.core.$strip>, z.ZodObject<{
+        type: z.ZodLiteral<"compact_boundary">;
+        trigger: z.ZodEnum<{
+            manual: "manual";
+            auto: "auto";
+        }>;
+        preTokens: z.ZodNumber;
     }, z.core.$strip>], "type">;
     index: z.ZodNumber;
 }, z.core.$strip>], "role">;
@@ -332,6 +346,13 @@ export declare const PaginatedMessagesSchema: z.ZodObject<{
                 description: z.ZodString;
                 argumentHint: z.ZodOptional<z.ZodString>;
             }, z.core.$strip>>;
+        }, z.core.$strip>, z.ZodObject<{
+            type: z.ZodLiteral<"compact_boundary">;
+            trigger: z.ZodEnum<{
+                manual: "manual";
+                auto: "auto";
+            }>;
+            preTokens: z.ZodNumber;
         }, z.core.$strip>], "type">;
         index: z.ZodNumber;
     }, z.core.$strip>], "role">>;

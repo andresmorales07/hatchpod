@@ -108,6 +108,12 @@ const SystemInitEventSchema = z.object({
   slashCommands: z.array(SlashCommandSchema),
 });
 
+const CompactBoundaryEventSchema = z.object({
+  type: z.literal("compact_boundary"),
+  trigger: z.enum(["manual", "auto"]),
+  preTokens: z.number().int(),
+});
+
 export const SystemEventSchema = z
   .object({
     role: z.literal("system"),
@@ -115,6 +121,7 @@ export const SystemEventSchema = z
       SessionResultEventSchema,
       StatusEventSchema,
       SystemInitEventSchema,
+      CompactBoundaryEventSchema,
     ]),
     index: z.number().int(),
   })

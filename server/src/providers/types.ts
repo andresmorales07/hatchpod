@@ -59,6 +59,8 @@ export interface ProviderSessionOptions {
   onSubagentStarted?: (info: SubagentStartedEvent) => void;
   onSubagentToolCall?: (info: SubagentToolCallEvent) => void;
   onSubagentCompleted?: (info: SubagentCompletedEvent) => void;
+  onCompacting?: (isCompacting: boolean) => void;
+  onContextUsage?: (usage: { inputTokens: number; contextWindow: number }) => void;
 }
 
 export interface ProviderSessionResult {

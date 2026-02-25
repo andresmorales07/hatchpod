@@ -88,15 +88,13 @@ export declare class SessionWatcher {
     /**
      * Replay messages from in-memory store to a single client. Supports
      * pagination via messageLimit (returns the most recent N messages).
-     * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
-     * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
+     * Buffered ephemeral state is sent before replay_complete.
      */
     private replayFromMemory;
     /**
      * Replay messages from JSONL file via adapter.getMessages(), then
      * sync watcher state and send replay_complete.
-     * If pendingThinking is provided, sends it as a thinking_delta before replay_complete.
-     * subagentsSnapshot is a pre-await snapshot of activeSubagents to avoid races.
+     * Buffered ephemeral state is sent before replay_complete.
      */
     private replayFromFile;
     /** Single poll cycle: check all watched sessions for new data. */

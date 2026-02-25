@@ -9,6 +9,8 @@ import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Composer } from "@/components/Composer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ContextUsageBadge } from "@/components/ContextUsageBadge";
+import { CompactingIndicator } from "@/components/CompactingIndicator";
 import { ArrowDown, ArrowLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TaskList } from "@/components/TaskList";
@@ -41,6 +43,7 @@ export function ChatPage() {
     messages, slashCommands, status, source, connected, pendingApproval, lastError,
     thinkingText, thinkingStartTime,
     hasOlderMessages, loadingOlderMessages, loadOlderMessages, serverTasks,
+    isCompacting, contextUsage,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
@@ -176,6 +179,7 @@ export function ChatPage() {
           </Button>
         )}
         <span className="text-sm font-medium truncate flex-1">{sessionName}</span>
+        {contextUsage && <ContextUsageBadge percentUsed={contextUsage.percentUsed} />}
         <Badge variant="outline" className={cn("text-xs font-semibold uppercase tracking-wide", statusStyles[status])}>
           {status}
         </Badge>
@@ -243,6 +247,13 @@ export function ChatPage() {
           onApproveAlways={approveAlways}
           onDeny={deny}
         />
+      )}
+
+      {/* Compacting indicator — shown while conversation is being compacted */}
+      {isCompacting && (
+        <div className="max-w-3xl mx-auto px-4 w-full">
+          <CompactingIndicator />
+        </div>
       )}
 
       {/* Thinking indicator — fixed above composer, not in scroll */}

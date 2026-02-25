@@ -94,6 +94,14 @@ export type ServerMessage = {
     status: "completed" | "failed" | "stopped";
     summary: string;
 } | {
+    type: "compacting";
+    isCompacting: boolean;
+} | {
+    type: "context_usage";
+    inputTokens: number;
+    contextWindow: number;
+    percentUsed: number;
+} | {
     type: "ping";
 } | {
     type: "error";

@@ -15,6 +15,8 @@ type ServerMessage =
   | { type: "subagent_started"; taskId: string; toolUseId: string; description: string; agentType?: string; startedAt: number }
   | { type: "subagent_tool_call"; toolUseId: string; toolName: string; summary: ToolSummary }
   | { type: "subagent_completed"; taskId: string; toolUseId: string; status: "completed" | "failed" | "stopped"; summary: string }
+  | { type: "compacting"; isCompacting: boolean }
+  | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
@@ -56,6 +58,10 @@ interface MessagesState {
 
   // Active and recently completed subagent states — keyed by toolUseId
   activeSubagents: Map<string, SubagentState>;
+
+  // Context window state
+  isCompacting: boolean;
+  contextUsage: { inputTokens: number; contextWindow: number; percentUsed: number } | null;
 
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -119,6 +125,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   totalMessageCount: 0,
   serverTasks: [],
   activeSubagents: new Map(),
+  isCompacting: false,
+  contextUsage: null,
 
   connect: (sessionId: string) => {
     // After a session redirect, the WebSocket is already connected to the
@@ -151,6 +159,8 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       totalMessageCount: 0,
       serverTasks: [],
       activeSubagents: new Map(),
+      isCompacting: false,
+      contextUsage: null,
     });
 
     const doConnect = () => {
@@ -215,6 +225,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 thinkingText: "",
                 thinkingStartTime: null,
                 activeSubagents: new Map(),
+                isCompacting: false,
               });
             } else if (isRunningStatus) {
               // Entering/re-entering running state — start the processing timer.
@@ -314,6 +325,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               }
               return { activeSubagents: map };
             });
+            break;
+          case "compacting":
+            set({ isCompacting: msg.isCompacting });
+            break;
+          case "context_usage":
+            set({ contextUsage: { inputTokens: msg.inputTokens, contextWindow: msg.contextWindow, percentUsed: msg.percentUsed } });
             break;
           case "error":
             console.error("Server error:", msg.message);

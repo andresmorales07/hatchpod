@@ -585,4 +585,47 @@ test.describe('session delivery pipeline', () => {
       conn.close();
     }
   });
+
+  test('compacting scenario: delivers compacting events, compact_boundary, and context_usage', async () => {
+    const sessionId = await createTestSession('[compacting] test');
+    const conn = await connectWs(sessionId);
+
+    try {
+      await conn.waitFor((msgs) => hasStatus(msgs, 'completed'));
+
+      // Should have received compacting start and end events
+      const compactingEvents = conn.messages.filter((m) => m.type === 'compacting');
+      expect(compactingEvents.length).toBeGreaterThanOrEqual(2);
+      expect(compactingEvents[0]).toMatchObject({ type: 'compacting', isCompacting: true });
+      // The last compacting event should be isCompacting: false
+      const lastCompacting = compactingEvents[compactingEvents.length - 1];
+      expect(lastCompacting).toMatchObject({ type: 'compacting', isCompacting: false });
+
+      // Should have received a compact_boundary message (stored in messages[])
+      const boundaryMsgs = conn.messages.filter(
+        (m) =>
+          m.type === 'message' &&
+          (m.message as { role: string; event?: { type: string } })?.role === 'system' &&
+          (m.message as { role: string; event?: { type: string } })?.event?.type === 'compact_boundary',
+      );
+      expect(boundaryMsgs).toHaveLength(1);
+      const event = (boundaryMsgs[0].message as { event: { trigger: string; preTokens: number } }).event;
+      expect(event.trigger).toBe('auto');
+      expect(event.preTokens).toBe(45000);
+
+      // Should have received context_usage event
+      const usageEvents = conn.messages.filter((m) => m.type === 'context_usage');
+      expect(usageEvents.length).toBeGreaterThanOrEqual(1);
+      const usage = usageEvents[0] as { inputTokens: number; contextWindow: number; percentUsed: number };
+      expect(usage.inputTokens).toBe(45000);
+      expect(usage.contextWindow).toBe(200000);
+      expect(usage.percentUsed).toBe(23); // Math.round(45000/200000 * 100)
+
+      // Should have the assistant response
+      const assistantMsgs = messagesOfRole(conn.messages, 'assistant');
+      expect(assistantMsgs.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      conn.close();
+    }
+  });
 });

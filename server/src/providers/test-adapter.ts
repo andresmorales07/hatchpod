@@ -392,6 +392,33 @@ export class TestAdapter implements ProviderAdapter {
         break;
       }
 
+      case "compacting": {
+        // Simulate compacting flow: compacting start → delay → compacting end → compact_boundary → context_usage → response
+        checkAbort(abortSignal);
+        options.onCompacting?.(true);
+        await delay(100, abortSignal);
+        options.onCompacting?.(false);
+
+        checkAbort(abortSignal);
+        // Yield a compact_boundary system message (stored in chat history)
+        yield {
+          role: "system",
+          event: { type: "compact_boundary", trigger: "auto", preTokens: 45000 },
+          index: index++,
+        };
+
+        // Report context usage after compaction
+        options.onContextUsage?.({ inputTokens: 45000, contextWindow: 200000 });
+
+        checkAbort(abortSignal);
+        yield {
+          role: "assistant",
+          parts: [{ type: "text", text: "Conversation was compacted." }],
+          index: index++,
+        };
+        break;
+      }
+
       case "thinking": {
         // Simulate streaming thinking deltas
         checkAbort(abortSignal);
