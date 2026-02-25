@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import type { ProviderAdapter, NormalizedMessage, ToolSummary } from "./providers/types.js";
 import type { ServerMessage, ContextUsage } from "./types.js";
 import type { GitDiffStat } from "./schemas/git.js";
+import { computeGitDiffStat } from "./git-status.js";
 
 /**
  * Session delivery mode.
@@ -150,6 +151,16 @@ export class SessionWatcher {
     }
 
     watched.filePath = filePath;
+
+    // Resolve cwd for poll-mode git diff support
+    try {
+      const sessions = await this.adapter.listSessions();
+      const match = sessions.find((s) => s.id === sessionId);
+      if (match) watched.cwd = match.cwd;
+    } catch {
+      // Non-critical
+    }
+
     await this.replayFromFile(sessionId, watched, client, messageLimit);
   }
 
@@ -627,6 +638,20 @@ export class SessionWatcher {
         const indexed = { ...normalized, index: watched.messages.length };
         watched.messages.push(indexed);
         this.broadcast(watched, { type: "message", message: indexed });
+
+        // Trigger git diff after tool_result messages (file may have changed)
+        if (normalized.role === "user" && normalized.parts.some((p) => p.type === "tool_result")) {
+          if (watched.cwd) {
+            computeGitDiffStat(watched.cwd).then((gitStat) => {
+              if (gitStat) {
+                this.pushEvent(sessionId, {
+                  type: "git_diff_stat",
+                  ...gitStat,
+                } as ServerMessage);
+              }
+            }).catch(() => {});
+          }
+        }
       }
     }
   }
