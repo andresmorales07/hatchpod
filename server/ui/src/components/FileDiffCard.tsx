@@ -53,6 +53,7 @@ function DiffBlock({
       PreTag="div"
       customStyle={codeCustomStyle}
       wrapLines
+      wrapLongLines
       lineProps={() => ({
         style: {
           backgroundColor: lineBackground,
@@ -186,7 +187,7 @@ export function FileDiffCard({ toolUse, toolResult }: Props) {
 
       {/* Expandable body */}
       {expanded && (
-        <div className="border-t border-border overflow-x-auto">
+        <div className="border-t border-border">
           {isEdit ? (
             <>
               {oldString && (
