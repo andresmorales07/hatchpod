@@ -129,6 +129,13 @@ function normalizeResult(msg: SDKResultMessage, index: number): NormalizedMessag
 }
 
 function normalizeMessage(msg: SDKMessage, index: number, accumulatedThinking = ""): NormalizedMessage | null {
+  // Drop sidechain messages — these belong to a subagent's internal stream and are
+  // never written to the parent session JSONL. Filtering here keeps the live stream
+  // consistent with what history replay shows.
+  if ((msg as { parent_tool_use_id?: string | null }).parent_tool_use_id != null) {
+    return null;
+  }
+
   switch (msg.type) {
     case "assistant":
       return normalizeAssistant(msg as SDKAssistantMessage, index, accumulatedThinking);

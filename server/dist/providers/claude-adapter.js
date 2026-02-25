@@ -94,6 +94,12 @@ function normalizeResult(msg, index) {
     };
 }
 function normalizeMessage(msg, index, accumulatedThinking = "") {
+    // Drop sidechain messages — these belong to a subagent's internal stream and are
+    // never written to the parent session JSONL. Filtering here keeps the live stream
+    // consistent with what history replay shows.
+    if (msg.parent_tool_use_id != null) {
+        return null;
+    }
     switch (msg.type) {
         case "assistant":
             return normalizeAssistant(msg, index, accumulatedThinking);
