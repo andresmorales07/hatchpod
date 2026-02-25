@@ -160,8 +160,12 @@ export class SessionWatcher {
      * Unlike pushMessage(), this does NOT store the event in messages[] —
      * used for status changes, thinking deltas, approval requests, etc.
      *
-     * Exception: thinking_delta events are also buffered in pendingThinkingText
-     * so late-connecting subscribers receive accumulated thinking text on subscribe().
+     * Several event types are buffered in WatchedSession fields so that
+     * late-connecting subscribers receive current state on subscribe():
+     *   - thinking_delta  → pendingThinkingText
+     *   - compacting      → isCompacting
+     *   - context_usage   → lastContextUsage
+     *   - subagent_*      → activeSubagents
      */
     pushEvent(sessionId, event) {
         const watched = this.sessions.get(sessionId);
@@ -180,8 +184,7 @@ export class SessionWatcher {
             watched.isCompacting = event.isCompacting;
         }
         else if (event.type === "context_usage") {
-            const e = event;
-            watched.lastContextUsage = { inputTokens: e.inputTokens, contextWindow: e.contextWindow, percentUsed: e.percentUsed };
+            watched.lastContextUsage = { inputTokens: event.inputTokens, contextWindow: event.contextWindow, percentUsed: event.percentUsed };
         }
         // Buffer subagent state for late subscribers
         if (event.type === "subagent_started") {
@@ -212,8 +215,7 @@ export class SessionWatcher {
         // being replayed after session completion or error. lastContextUsage is
         // intentionally kept (useful final state for the header badge).
         if (event.type === "status") {
-            const status = event.status;
-            if (status === "completed" || status === "error" || status === "interrupted") {
+            if (event.status === "completed" || event.status === "error" || event.status === "interrupted") {
                 watched.pendingThinkingText = "";
                 watched.activeSubagents.clear();
                 watched.isCompacting = false;

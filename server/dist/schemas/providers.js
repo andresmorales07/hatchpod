@@ -94,7 +94,7 @@ const SystemInitEventSchema = z.object({
 const CompactBoundaryEventSchema = z.object({
     type: z.literal("compact_boundary"),
     trigger: z.enum(["manual", "auto"]),
-    preTokens: z.number().int(),
+    preTokens: z.number().int().nonnegative(),
 });
 export const SystemEventSchema = z
     .object({

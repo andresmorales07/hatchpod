@@ -395,9 +395,9 @@ export class TestAdapter implements ProviderAdapter {
       case "compacting": {
         // Simulate compacting flow: compacting start → delay → compacting end → compact_boundary → context_usage → response
         checkAbort(abortSignal);
-        options.onCompacting?.(true);
+        try { options.onCompacting?.(true); } catch (err) { console.error("test-adapter: onCompacting callback failed:", err); }
         await delay(100, abortSignal);
-        options.onCompacting?.(false);
+        try { options.onCompacting?.(false); } catch (err) { console.error("test-adapter: onCompacting callback failed:", err); }
 
         checkAbort(abortSignal);
         // Yield a compact_boundary system message (stored in chat history)
@@ -408,7 +408,11 @@ export class TestAdapter implements ProviderAdapter {
         };
 
         // Report context usage after compaction
-        options.onContextUsage?.({ inputTokens: 45000, contextWindow: 200000 });
+        try {
+          options.onContextUsage?.({ inputTokens: 45000, contextWindow: 200000 });
+        } catch (err) {
+          console.error("test-adapter: onContextUsage callback failed:", err);
+        }
 
         checkAbort(abortSignal);
         yield {

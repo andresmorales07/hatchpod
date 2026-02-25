@@ -20,6 +20,8 @@ type ServerMessage =
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
+type ContextUsage = { inputTokens: number; contextWindow: number; percentUsed: number };
+
 export interface SubagentState {
   taskId: string;
   description: string;
@@ -61,7 +63,7 @@ interface MessagesState {
 
   // Context window state
   isCompacting: boolean;
-  contextUsage: { inputTokens: number; contextWindow: number; percentUsed: number } | null;
+  contextUsage: ContextUsage | null;
 
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -326,9 +328,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               return { activeSubagents: map };
             });
             break;
-          case "compacting":
-            set({ isCompacting: msg.isCompacting });
+          case "compacting": {
+            const currentStatus = get().status;
+            const isTerminalStatus = currentStatus === "completed" || currentStatus === "error"
+              || currentStatus === "interrupted" || currentStatus === "history";
+            if (!isTerminalStatus) {
+              set({ isCompacting: msg.isCompacting });
+            }
             break;
+          }
           case "context_usage":
             set({ contextUsage: { inputTokens: msg.inputTokens, contextWindow: msg.contextWindow, percentUsed: msg.percentUsed } });
             break;

@@ -63,8 +63,12 @@ export declare class SessionWatcher {
      * Unlike pushMessage(), this does NOT store the event in messages[] —
      * used for status changes, thinking deltas, approval requests, etc.
      *
-     * Exception: thinking_delta events are also buffered in pendingThinkingText
-     * so late-connecting subscribers receive accumulated thinking text on subscribe().
+     * Several event types are buffered in WatchedSession fields so that
+     * late-connecting subscribers receive current state on subscribe():
+     *   - thinking_delta  → pendingThinkingText
+     *   - compacting      → isCompacting
+     *   - context_usage   → lastContextUsage
+     *   - subagent_*      → activeSubagents
      */
     pushEvent(sessionId: string, event: ServerMessage): void;
     /**

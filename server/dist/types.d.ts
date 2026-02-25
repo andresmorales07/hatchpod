@@ -107,3 +107,9 @@ export type ServerMessage = {
     type: "error";
     message: string;
 };
+/** Shared type for context window usage data, used in both server-side watcher state and WS events. */
+export type ContextUsage = {
+    inputTokens: number;
+    contextWindow: number;
+    percentUsed: number;
+};

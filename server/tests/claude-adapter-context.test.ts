@@ -265,14 +265,53 @@ describe("ClaudeAdapter compacting and context usage", () => {
       ),
     );
 
-    // First result → onContextUsage from modelUsage
-    // Second assistant → onContextUsage from assistant.message.usage (cachedContextWindow is set)
-    // Second result → onContextUsage from modelUsage
-    expect(usageUpdates.length).toBeGreaterThanOrEqual(2);
-    // The second assistant call should use the cached context window
-    const secondAssistantCall = usageUpdates.find((u) => u.inputTokens === 25000);
-    expect(secondAssistantCall).toBeDefined();
-    expect(secondAssistantCall!.contextWindow).toBe(200000);
+    // Exactly 3 calls: result1, assistant2 (per-turn from cachedContextWindow), result2
+    expect(usageUpdates).toHaveLength(3);
+    expect(usageUpdates[0]).toEqual({ inputTokens: 10000, contextWindow: 200000 }); // result1
+    expect(usageUpdates[1]).toEqual({ inputTokens: 25000, contextWindow: 200000 }); // assistant2 (per-turn)
+    expect(usageUpdates[2]).toEqual({ inputTokens: 25000, contextWindow: 200000 }); // result2
+  });
+
+  it("clamps percentUsed to 100 when inputTokens exceeds contextWindow", async () => {
+    const usageUpdates: Array<{ inputTokens: number; contextWindow: number }> = [];
+
+    mockQuery.mockReturnValue(
+      createMockHandle([
+        {
+          type: "result",
+          total_cost_usd: 0.01,
+          num_turns: 1,
+          session_id: "s1",
+          modelUsage: {
+            "claude-opus-4-6": {
+              inputTokens: 210000,
+              outputTokens: 200,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+              webSearchRequests: 0,
+              costUSD: 0.01,
+              contextWindow: 200000,
+              maxOutputTokens: 16384,
+            },
+          },
+        },
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter();
+    await drainGenerator(
+      adapter.run(
+        makeOptions({
+          onContextUsage: (usage) => usageUpdates.push(usage),
+        }),
+      ),
+    );
+
+    // The onContextUsage callback only receives raw inputTokens + contextWindow.
+    // The percentUsed clamping is applied in sessions.ts, not the adapter.
+    // Verify the raw values are passed through correctly.
+    expect(usageUpdates).toHaveLength(1);
+    expect(usageUpdates[0]).toEqual({ inputTokens: 210000, contextWindow: 200000 });
   });
 
   it("does not call onContextUsage for assistant messages before contextWindow is cached", async () => {
