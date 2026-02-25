@@ -1,5 +1,6 @@
 import { getProvider } from "./providers/index.js";
 import { SessionWatcher } from "./session-watcher.js";
+import { computeGitDiffStat } from "./git-status.js";
 import { randomUUID } from "node:crypto";
 // ── ActiveSession map (runtime handles for API-driven sessions) ──
 const sessions = new Map();
@@ -171,7 +172,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
         session.status = "running";
         // Enter push mode — the watcher stores messages and broadcasts to WS clients.
         // Creates the WatchedSession entry if no client has subscribed yet.
-        watcher.setMode(session.sessionId, "push");
+        watcher.setMode(session.sessionId, "push", session.cwd);
         watcher.pushEvent(session.sessionId, { type: "status", status: "running" });
         const adapter = getProvider(session.provider);
         const generator = adapter.run({
@@ -268,6 +269,17 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
             }
             // Store + broadcast each SDK message via the watcher.
             watcher.pushMessage(session.sessionId, result.value);
+            // Trigger async git diff after tool results (file changes may have occurred)
+            if (result.value.role === "user" && result.value.parts.some((p) => p.type === "tool_result")) {
+                computeGitDiffStat(session.cwd).then((stat) => {
+                    if (stat && watcher) {
+                        watcher.pushEvent(session.sessionId, {
+                            type: "git_diff_stat",
+                            ...stat,
+                        });
+                    }
+                }).catch(() => { }); // Non-critical
+            }
         }
         const sessionResult = result.value;
         // Capture the CLI session ID from the provider result.

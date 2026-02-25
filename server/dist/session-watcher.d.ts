@@ -68,6 +68,7 @@ export declare class SessionWatcher {
      *   - thinking_delta  → pendingThinkingText
      *   - compacting      → isCompacting
      *   - context_usage   → lastContextUsage
+     *   - git_diff_stat   → lastGitDiffStat
      *   - subagent_*      → activeSubagents
      */
     pushEvent(sessionId: string, event: ServerMessage): void;
@@ -75,7 +76,7 @@ export declare class SessionWatcher {
      * Set the delivery mode for a session. Creates the WatchedSession entry
      * if it doesn't exist yet (needed when runSession starts before WS connects).
      */
-    setMode(sessionId: string, mode: SessionMode): void;
+    setMode(sessionId: string, mode: SessionMode, cwd?: string): void;
     /**
      * Transition a session from push mode to poll mode. Resolves the JSONL file
      * path and advances the byte offset to EOF so polling only picks up new data

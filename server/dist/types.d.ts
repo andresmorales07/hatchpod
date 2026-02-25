@@ -102,6 +102,18 @@ export type ServerMessage = {
     contextWindow: number;
     percentUsed: number;
 } | {
+    type: "git_diff_stat";
+    files: Array<{
+        path: string;
+        insertions: number;
+        deletions: number;
+        binary: boolean;
+        untracked: boolean;
+        staged: boolean;
+    }>;
+    totalInsertions: number;
+    totalDeletions: number;
+} | {
     type: "ping";
 } | {
     type: "error";
