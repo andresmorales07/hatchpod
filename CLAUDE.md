@@ -137,7 +137,7 @@ Two Docker volumes persist state across container restarts:
 │                   ├── input.tsx
 │                   ├── scroll-area.tsx
 │                   └── tooltip.tsx
-├── server/tests/               # Vitest unit tests (23 test files + helpers.ts)
+├── server/tests/               # Vitest unit tests (24 test files + helpers.ts)
 └── rootfs/                 # Files copied into the container at /
     └── etc/
         ├── ssh/sshd_config
@@ -265,8 +265,10 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 - **Zod schemas are the single source of truth** for all serializable API types. Define new request/response types in `server/src/schemas/`, then re-export the `z.infer<>` types from `providers/types.ts` or `types.ts`. Non-serializable types (containing functions, AbortController, Set, callbacks) stay as manual interfaces. Register new endpoints in `schemas/registry.ts` to keep the OpenAPI spec in sync.
 - **API docs** are served at `/api/docs` (Scalar UI, CDN) and `/api/openapi.json` (OpenAPI 3.1 spec). Both are unauthenticated, like `/healthz`.
 - `server/dist/` is tracked in git. After modifying any file under `server/src/`, rebuild with `cd server && npm run build` and commit the updated `server/dist/` files alongside the source changes.
+- **Claude adapter unit testing** — To test `claude-adapter.ts` without the real SDK, use `vi.mock("@anthropic-ai/claude-agent-sdk")` and return a mock `query()` that yields an async iterable of synthetic SDK messages. See `server/tests/claude-adapter-thinking.test.ts` for the pattern.
 - **ESLint** is configured in both `server/` and `server/ui/` using ESLint v9 flat config with typescript-eslint. Run `npm run lint` to check and `npm run lint:fix` to auto-fix. The UI config includes `eslint-plugin-react-hooks` and `eslint-plugin-react-refresh`.
 - **SessionWatcher is the single message authority** — All messages flow through `SessionWatcher` via `pushMessage()` (stores + broadcasts) or `pushEvent()` (broadcasts only, ephemeral). `runSession()` sets mode to `"push"` and pushes messages into the watcher; it never broadcasts directly to WebSocket clients. New subscribers default to `"poll"` mode for CLI/history live updates; `runSession()` overrides to `"push"` immediately. Do not introduce alternate delivery paths.
+- **Thinking delta buffering** — `WatchedSession.pendingThinkingText` accumulates thinking text from `pushEvent()` thinking_delta events. Late-connecting WS subscribers receive the buffered text in `subscribe()`. The buffer is cleared when `pushMessage()` receives an assistant message with a `reasoning` part. This solves the timing gap where `runSession()` starts emitting thinking deltas before the WS client connects.
 - **Future-proof implementations over workarounds** — Always prefer the architecturally correct, future-proof approach even when it's more complex. Do not suggest a simpler workaround just because the proper solution requires more effort. This project has zero users, so breaking changes are free — leverage this to iterate toward the right architecture without backwards-compatibility constraints.
 
 ## Testing Strategy
