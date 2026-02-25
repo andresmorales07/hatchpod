@@ -17,10 +17,26 @@ type ServerMessage =
   | { type: "subagent_completed"; taskId: string; toolUseId: string; status: "completed" | "failed" | "stopped"; summary: string }
   | { type: "compacting"; isCompacting: boolean }
   | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
+  | { type: "git_diff_stat"; files: GitFileStat[]; totalInsertions: number; totalDeletions: number }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
 type ContextUsage = { inputTokens: number; contextWindow: number; percentUsed: number };
+
+interface GitFileStat {
+  path: string;
+  insertions: number;
+  deletions: number;
+  binary: boolean;
+  untracked: boolean;
+  staged: boolean;
+}
+
+interface GitDiffStat {
+  files: GitFileStat[];
+  totalInsertions: number;
+  totalDeletions: number;
+}
 
 export interface SubagentState {
   taskId: string;
@@ -64,6 +80,9 @@ interface MessagesState {
   // Context window state
   isCompacting: boolean;
   contextUsage: ContextUsage | null;
+
+  // Git diff stats
+  gitDiffStat: GitDiffStat | null;
 
   connect: (sessionId: string) => void;
   disconnect: () => void;
@@ -129,6 +148,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   activeSubagents: new Map(),
   isCompacting: false,
   contextUsage: null,
+  gitDiffStat: null,
 
   connect: (sessionId: string) => {
     // After a session redirect, the WebSocket is already connected to the
@@ -163,6 +183,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       activeSubagents: new Map(),
       isCompacting: false,
       contextUsage: null,
+      gitDiffStat: null,
     });
 
     const doConnect = () => {
@@ -206,6 +227,24 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               oldestLoadedIndex: oldestIndex,
               hasOlderMessages: oldestIndex > 0,
             });
+            // Fetch initial git status
+            const sessStore = useSessionsStore.getState();
+            const sess = sessStore.sessions.find((s) => s.id === sessionId);
+            const sessionCwd = sess?.cwd;
+            if (sessionCwd) {
+              const { token: authToken } = useAuthStore.getState();
+              fetch(`/api/git/status?cwd=${encodeURIComponent(sessionCwd)}`, {
+                headers: { Authorization: `Bearer ${authToken}` },
+              })
+                .then(async (gitRes) => {
+                  if (currentSessionId !== sessionId) return;
+                  if (gitRes.ok) {
+                    const gitData = await gitRes.json();
+                    set({ gitDiffStat: gitData });
+                  }
+                })
+                .catch(() => {}); // Non-critical
+            }
             break;
           }
           case "tasks": {
@@ -339,6 +378,15 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           }
           case "context_usage":
             set({ contextUsage: { inputTokens: msg.inputTokens, contextWindow: msg.contextWindow, percentUsed: msg.percentUsed } });
+            break;
+          case "git_diff_stat":
+            set({
+              gitDiffStat: {
+                files: msg.files,
+                totalInsertions: msg.totalInsertions,
+                totalDeletions: msg.totalDeletions,
+              },
+            });
             break;
           case "error":
             console.error("Server error:", msg.message);
