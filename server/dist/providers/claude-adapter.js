@@ -358,7 +358,8 @@ export class ClaudeAdapter {
                             if (usage.contextWindow > 0) {
                                 cachedContextWindow = usage.contextWindow;
                                 try {
-                                    options.onContextUsage?.({ inputTokens: usage.inputTokens, contextWindow: usage.contextWindow });
+                                    const totalInputTokens = usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
+                                    options.onContextUsage?.({ inputTokens: totalInputTokens, contextWindow: usage.contextWindow });
                                 }
                                 catch (err) {
                                     console.error("claude-adapter: onContextUsage callback failed:", err);
@@ -375,10 +376,13 @@ export class ClaudeAdapter {
                 // from the previous turn's result, so mid-session assistant messages provide live updates.
                 if (sdkMessage.type === "assistant" && cachedContextWindow > 0) {
                     const assistantMsg = sdkMessage;
-                    const inputTokens = assistantMsg.message?.usage?.input_tokens;
-                    if (typeof inputTokens === "number" && inputTokens > 0) {
+                    const rawUsage = assistantMsg.message?.usage;
+                    const totalInputTokens = (rawUsage?.input_tokens ?? 0) +
+                        (rawUsage?.cache_read_input_tokens ?? 0) +
+                        (rawUsage?.cache_creation_input_tokens ?? 0);
+                    if (totalInputTokens > 0) {
                         try {
-                            options.onContextUsage?.({ inputTokens, contextWindow: cachedContextWindow });
+                            options.onContextUsage?.({ inputTokens: totalInputTokens, contextWindow: cachedContextWindow });
                         }
                         catch (err) {
                             console.error("claude-adapter: onContextUsage callback failed:", err);
