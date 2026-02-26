@@ -425,17 +425,34 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       };
 
       socket.onclose = () => {
+        // Capture whether this was the active socket BEFORE nulling ws.
+        // After a session remap, connect() returns early without replacing ws,
+        // so the remapped socket is still the active one even though its closure
+        // sessionId is now stale (old pre-remap ID).
+        const wasActive = ws === socket;
         ws = null;
         _redirectingTo = null;
         clearTimeout(heartbeatTimer);
-        // Only update state if this socket belongs to the current session
-        if (currentSessionId !== sessionId) return;
+        // Stale socket (already replaced by a newer connect()) — ignore.
+        if (!wasActive) return;
         set({ connected: false });
+        // Determine which session ID to reconnect to. After a session remap the
+        // closure's sessionId is the old temp UUID; currentSessionId is the real one.
+        const reconnectId = currentSessionId;
+        if (!reconnectId) return; // Navigated away entirely — no reconnect needed.
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts);
           reconnectAttempts++;
           set({ lastError: `Reconnecting (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})…` });
-          reconnectTimer = setTimeout(doConnect, delay);
+          if (reconnectId === sessionId) {
+            // Same session ID — reuse doConnect() (avoids state reset).
+            reconnectTimer = setTimeout(doConnect, delay);
+          } else {
+            // Session was remapped — must reconnect under the new ID.
+            reconnectTimer = setTimeout(() => {
+              if (currentSessionId === reconnectId) get().connect(reconnectId);
+            }, delay);
+          }
         } else {
           set({ status: "disconnected", lastError: "Connection lost — reload to reconnect" });
         }
