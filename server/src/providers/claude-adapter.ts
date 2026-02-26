@@ -187,6 +187,10 @@ export class ClaudeAdapter implements ProviderAdapter {
           permissionMode: options.permissionMode,
           systemPrompt: { type: "preset", preset: "claude_code" },
           thinking: { type: "adaptive" },
+          env: {
+            ...process.env,
+            CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ?? "32000",
+          },
           ...(options.permissionMode === "bypassPermissions"
             ? { allowDangerouslySkipPermissions: true }
             : {}),
