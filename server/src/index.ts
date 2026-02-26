@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from "node:http";
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,18 +46,41 @@ async function serveStatic(pathname: string): Promise<{ data: Buffer; contentTyp
   }
 }
 
-const SECURITY_HEADERS: Record<string, string> = {
+const BASE_SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 
+const DEFAULT_CSP =
+  "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; " +
+  "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
+
+function cspWithNonce(nonce: string): string {
+  return (
+    `default-src 'self'; script-src 'self' 'nonce-${nonce}' blob:; worker-src 'self' blob:; ` +
+    `style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'`
+  );
+}
+
 function setSecurityHeaders(res: import("node:http").ServerResponse): void {
-  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+  for (const [key, value] of Object.entries(BASE_SECURITY_HEADERS)) {
     res.setHeader(key, value);
   }
+  res.setHeader("Content-Security-Policy", DEFAULT_CSP);
+}
+
+/** Inject a per-request nonce into index.html script tags and return nonce-based CSP. */
+function serveIndex(
+  res: import("node:http").ServerResponse,
+  data: Buffer,
+): void {
+  const nonce = randomBytes(16).toString("base64");
+  const html = data.toString("utf-8").replace(/<script\b/g, (m) => `${m} nonce="${nonce}"`);
+  res.setHeader("Content-Security-Policy", cspWithNonce(nonce));
+  res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-cache" });
+  res.end(html);
 }
 
 export function createApp() {
@@ -77,10 +101,15 @@ export function createApp() {
       }
 
       // Static file serving
-      const result = await serveStatic(pathname === "/" ? "/index.html" : pathname);
+      const isIndex = pathname === "/" || pathname === "/index.html";
+      const result = await serveStatic(isIndex ? "/index.html" : pathname);
       if (result) {
+        if (isIndex) {
+          serveIndex(res, result.data);
+          return;
+        }
         // Hashed assets (Vite content-hashed filenames) can be cached forever;
-        // everything else (index.html) must revalidate so image updates take effect.
+        // everything else must revalidate so updates take effect.
         const cacheControl = pathname.startsWith("/assets/")
           ? "public, max-age=31536000, immutable"
           : "no-cache";
@@ -94,8 +123,7 @@ export function createApp() {
       if (!ext) {
         const indexResult = await serveStatic("/index.html");
         if (indexResult) {
-          res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-cache" });
-          res.end(indexResult.data);
+          serveIndex(res, indexResult.data);
           return;
         }
       }
