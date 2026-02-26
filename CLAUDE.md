@@ -340,7 +340,8 @@ docker rm -f hatchpod-test
 - **Always check for relevant skills and MCP servers** before planning or implementing features. Use the `Skill` tool to invoke skills (e.g., `brainstorming` before design work, `writing-plans` before implementation, `frontend-design` for UI work, `systematic-debugging` for bug fixes).
 - **Use Context7 MCP** (`mcp__plugin_context7_context7__resolve-library-id` and `query-docs`) for up-to-date library documentation instead of relying on web searches or cached knowledge.
 - **Use Serena MCP** for semantic code exploration (symbol overview, find references) when navigating the codebase efficiently.
-- **Use the `frontend-design` skill** (invoke via `Skill` tool) whenever creating or modifying UI components, pages, or layouts in `server/ui/src/` (web UI) or any mobile app directory. This applies to visual changes, new screens, component redesigns, and responsive layout work — not backend-only API changes.
+- **Use the `frontend-design` skill** (invoke via `Skill` tool) whenever creating OR modifying UI components, pages, or layouts in `server/ui/src/` (web UI) or any mobile app directory. This applies to visual changes, new screens, component redesigns, responsive layout work, and styling updates — not backend-only API changes. **This includes small modifications** — "just updating a component" still requires invoking the skill. Do not rationalize skipping it.
+- **Use `agent-sdk-dev` skills** when working with `@anthropic-ai/claude-agent-sdk` — use `agent-sdk-dev:new-sdk-app` when creating a new SDK application and `agent-sdk-dev:agent-sdk-verifier-ts` to verify SDK configuration and best practices after modifying `server/src/providers/claude-adapter.ts` or any SDK integration code.
 - **Follow the brainstorming → writing-plans → implementation pipeline** for any non-trivial feature work. Design docs go in `docs/plans/YYYY-MM-DD-<topic>-design.md`.
 
 ### Skills
