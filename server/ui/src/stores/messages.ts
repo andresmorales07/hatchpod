@@ -107,6 +107,8 @@ let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
 let thinkingStart: number | null = null;
 let currentSessionId: string | null = null;
+// Track seen message indices to deduplicate on reconnect replay
+let seenIndices = new Set<number>();
 // Set during session ID remap to prevent disconnect/connect from tearing down
 // the still-valid WebSocket connection during React navigation
 let _redirectingTo: string | null = null;
@@ -165,6 +167,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     currentSessionId = sessionId;
 
     thinkingStart = null;
+    seenIndices = new Set();
     set({
       messages: [],
       status: "starting",
@@ -210,12 +213,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         switch (msg.type) {
           case "message": {
             const m = msg.message;
+            // Deduplicate by index — reconnect replays may resend messages
+            if (seenIndices.has(m.index)) break;
+            seenIndices.add(m.index);
             if (m.role === "assistant" && m.parts.some((p) => p.type === "reasoning")) {
               // Clear thinking TEXT but keep thinkingStartTime — the indicator
               // stays visible with "Thinking" while status is still "running".
               set({ thinkingText: "" });
             }
-            // Server guarantees no duplicates — single delivery path via watcher.
             set((s) => ({ messages: [...s.messages, m] }));
             break;
           }
@@ -453,7 +458,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
           return;
         }
         const data = await res.json();
-        const olderMessages: NormalizedMessage[] = data.messages ?? [];
+        const olderMessages: NormalizedMessage[] = (data.messages ?? []).filter(
+          (m: NormalizedMessage) => !seenIndices.has(m.index),
+        );
+        for (const m of olderMessages) seenIndices.add(m.index);
         const hasMore: boolean = data.hasMore ?? false;
         const oldestIndex: number = data.oldestIndex ?? 0;
 
