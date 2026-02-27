@@ -79,9 +79,7 @@ export function authenticateToken(token, ip) {
         recordFailedAttempt(ip);
     return valid;
 }
-export function getRequestIp(req) {
-    return getClientIp(req);
-}
+export const getRequestIp = getClientIp;
 export function sendUnauthorized(res) {
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "unauthorized" }));

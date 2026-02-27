@@ -166,6 +166,17 @@ export async function createSession(req) {
     return { id, status: session.status };
 }
 // ── Session execution ──
+/** Transition watcher to poll mode, logging but not throwing on failure. */
+async function safeTransitionToPoll(sessionId) {
+    if (!watcher)
+        return;
+    try {
+        await watcher.transitionToPoll(sessionId);
+    }
+    catch (err) {
+        console.warn(`Failed to transition watcher to poll for ${sessionId}:`, err);
+    }
+}
 async function runSession(session, prompt, permissionMode, model, allowedTools, resumeSessionId) {
     if (!watcher) {
         console.error(`runSession(${session.sessionId}): watcher not initialized`);
@@ -307,12 +318,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
             // Remap the watcher entry then transition to poll mode (one atomic step
             // replaces the old remap → syncOffset → unsuppress dance).
             watcher.remap(oldId, session.sessionId);
-            try {
-                await watcher.transitionToPoll(session.sessionId);
-            }
-            catch (err) {
-                console.warn(`Failed to transition watcher to poll for ${session.sessionId}:`, err);
-            }
+            await safeTransitionToPoll(session.sessionId);
             watcher.pushEvent(session.sessionId, {
                 type: "session_redirected",
                 newSessionId: session.sessionId,
@@ -320,12 +326,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
         }
         else {
             // No remap needed (e.g., resumed session) — transition to poll.
-            try {
-                await watcher.transitionToPoll(session.sessionId);
-            }
-            catch (err) {
-                console.warn(`Failed to transition watcher to poll for ${session.sessionId}:`, err);
-            }
+            await safeTransitionToPoll(session.sessionId);
         }
         // Status may have been mutated externally by interruptSession()
         const currentStatus = session.status;
@@ -335,12 +336,7 @@ async function runSession(session, prompt, permissionMode, model, allowedTools, 
     }
     catch (err) {
         // Transition to poll on error so the watcher can take over.
-        try {
-            await watcher.transitionToPoll(session.sessionId);
-        }
-        catch (pollErr) {
-            console.warn(`runSession(${session.sessionId}): failed to transition to poll on error path:`, pollErr);
-        }
+        await safeTransitionToPoll(session.sessionId);
         const currentStatus = session.status;
         const isAbortError = session.abortController.signal.aborted;
         if (currentStatus === "interrupted" && isAbortError) {

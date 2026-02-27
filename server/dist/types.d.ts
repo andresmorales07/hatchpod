@@ -1,5 +1,4 @@
-import type { NormalizedMessage, PermissionModeCommon, SlashCommand, ToolSummary } from "./providers/types.js";
-import type { ApprovalDecision } from "./providers/types.js";
+import type { NormalizedMessage, PermissionModeCommon, SlashCommand, ToolSummary, ApprovalDecision } from "./providers/types.js";
 export type { SessionStatus, CreateSessionRequest, SessionSummaryDTO } from "./schemas/sessions.js";
 import type { SessionStatus } from "./schemas/sessions.js";
 /**

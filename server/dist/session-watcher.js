@@ -1,5 +1,7 @@
 import { open, stat } from "node:fs/promises";
 import { computeGitDiffStat } from "./git-status.js";
+/** Statuses that clear transient buffers (thinking, subagents, compacting, git diff). */
+const TERMINAL_STATUSES = new Set(["completed", "error", "interrupted"]);
 /**
  * Central message router for all session types. Stores messages in-memory,
  * replays to new subscribers, and broadcasts live updates.
@@ -239,13 +241,11 @@ export class SessionWatcher {
         // Clear transient buffers on terminal status — prevents stale data from
         // being replayed after session completion or error. lastContextUsage is
         // intentionally kept (useful final state for the header badge).
-        if (event.type === "status") {
-            if (event.status === "completed" || event.status === "error" || event.status === "interrupted") {
-                watched.pendingThinkingText = "";
-                watched.activeSubagents.clear();
-                watched.isCompacting = false;
-                watched.lastGitDiffStat = null;
-            }
+        if (event.type === "status" && TERMINAL_STATUSES.has(event.status)) {
+            watched.pendingThinkingText = "";
+            watched.activeSubagents.clear();
+            watched.isCompacting = false;
+            watched.lastGitDiffStat = null;
         }
         this.broadcast(watched, event);
     }
@@ -331,6 +331,31 @@ export class SessionWatcher {
         }
     }
     // ── Private methods ──
+    /** Buffered ephemeral state to replay to late-connecting subscribers. */
+    sendBufferedState(client, watched, overrides) {
+        const thinking = overrides?.pendingThinking ?? watched.pendingThinkingText;
+        const subagents = overrides?.subagents ?? watched.activeSubagents;
+        const compacting = overrides?.isCompacting ?? watched.isCompacting;
+        const usage = overrides?.contextUsage !== undefined ? overrides.contextUsage : watched.lastContextUsage;
+        const diff = overrides?.gitDiffStat !== undefined ? overrides.gitDiffStat : watched.lastGitDiffStat;
+        const mode = overrides?.lastMode !== undefined ? overrides.lastMode : watched.lastMode;
+        if (thinking) {
+            this.send(client, { type: "thinking_delta", text: thinking });
+        }
+        this.replaySubagentState(subagents, client);
+        if (compacting) {
+            this.send(client, { type: "compacting", isCompacting: true });
+        }
+        if (usage) {
+            this.send(client, { type: "context_usage", ...usage });
+        }
+        if (diff) {
+            this.send(client, { type: "git_diff_stat", ...diff });
+        }
+        if (mode) {
+            this.send(client, { type: "mode_changed", mode });
+        }
+    }
     /**
      * Replay messages from in-memory store to a single client. Supports
      * pagination via messageLimit (returns the most recent N messages).
@@ -347,22 +372,14 @@ export class SessionWatcher {
         for (const msg of page) {
             this.send(client, { type: "message", message: msg });
         }
-        if (pendingThinking) {
-            this.send(client, { type: "thinking_delta", text: pendingThinking });
-        }
-        this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
-        if (isCompacting) {
-            this.send(client, { type: "compacting", isCompacting: true });
-        }
-        if (contextUsage) {
-            this.send(client, { type: "context_usage", ...contextUsage });
-        }
-        if (gitDiffStat) {
-            this.send(client, { type: "git_diff_stat", ...gitDiffStat });
-        }
-        if (lastMode) {
-            this.send(client, { type: "mode_changed", mode: lastMode });
-        }
+        this.sendBufferedState(client, watched, {
+            pendingThinking,
+            subagents: subagentsSnapshot,
+            isCompacting,
+            contextUsage,
+            gitDiffStat,
+            lastMode,
+        });
         this.send(client, {
             type: "replay_complete",
             totalMessages: total,
@@ -375,21 +392,21 @@ export class SessionWatcher {
      * Buffered ephemeral state is sent before replay_complete.
      */
     async replayFromFile(sessionId, watched, client, messageLimit, pendingThinking, subagentsSnapshot, isCompacting, contextUsage, gitDiffStat, lastMode) {
+        // Helper to send buffered state + replay_complete for early-exit paths
+        const finishReplay = (totalMessages = 0, oldestIndex = 0) => {
+            this.sendBufferedState(client, watched, {
+                pendingThinking,
+                subagents: subagentsSnapshot,
+                isCompacting,
+                contextUsage,
+                gitDiffStat,
+                lastMode,
+            });
+            this.send(client, { type: "replay_complete", totalMessages, oldestIndex });
+        };
         // No file to replay (e.g., test adapter) — just signal replay is done
         if (!watched.filePath) {
-            if (pendingThinking) {
-                this.send(client, { type: "thinking_delta", text: pendingThinking });
-            }
-            this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
-            if (isCompacting)
-                this.send(client, { type: "compacting", isCompacting: true });
-            if (contextUsage)
-                this.send(client, { type: "context_usage", ...contextUsage });
-            if (gitDiffStat)
-                this.send(client, { type: "git_diff_stat", ...gitDiffStat });
-            if (lastMode)
-                this.send(client, { type: "mode_changed", mode: lastMode });
-            this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
+            finishReplay();
             return;
         }
         // Snapshot file size BEFORE reading so the byte offset stays aligned
@@ -411,35 +428,11 @@ export class SessionWatcher {
         }
         catch (err) {
             if (err instanceof Error && err.name === "SessionNotFound") {
-                if (pendingThinking) {
-                    this.send(client, { type: "thinking_delta", text: pendingThinking });
-                }
-                this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
-                if (isCompacting)
-                    this.send(client, { type: "compacting", isCompacting: true });
-                if (contextUsage)
-                    this.send(client, { type: "context_usage", ...contextUsage });
-                if (gitDiffStat)
-                    this.send(client, { type: "git_diff_stat", ...gitDiffStat });
-                if (lastMode)
-                    this.send(client, { type: "mode_changed", mode: lastMode });
-                this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
+                finishReplay();
                 return;
             }
             this.send(client, { type: "error", message: "failed to load message history" });
-            if (pendingThinking) {
-                this.send(client, { type: "thinking_delta", text: pendingThinking });
-            }
-            this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
-            if (isCompacting)
-                this.send(client, { type: "compacting", isCompacting: true });
-            if (contextUsage)
-                this.send(client, { type: "context_usage", ...contextUsage });
-            if (gitDiffStat)
-                this.send(client, { type: "git_diff_stat", ...gitDiffStat });
-            if (lastMode)
-                this.send(client, { type: "mode_changed", mode: lastMode });
-            this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
+            finishReplay();
             throw err;
         }
         // 1. Send messages to the client and populate in-memory store
@@ -462,23 +455,7 @@ export class SessionWatcher {
             this.send(client, { type: "tasks", tasks: result.tasks });
         }
         // 4. Send buffered ephemeral state, then replay_complete
-        if (pendingThinking) {
-            this.send(client, { type: "thinking_delta", text: pendingThinking });
-        }
-        this.replaySubagentState(subagentsSnapshot ?? watched.activeSubagents, client);
-        if (isCompacting)
-            this.send(client, { type: "compacting", isCompacting: true });
-        if (contextUsage)
-            this.send(client, { type: "context_usage", ...contextUsage });
-        if (gitDiffStat)
-            this.send(client, { type: "git_diff_stat", ...gitDiffStat });
-        if (lastMode)
-            this.send(client, { type: "mode_changed", mode: lastMode });
-        this.send(client, {
-            type: "replay_complete",
-            totalMessages: result.totalMessages,
-            oldestIndex: result.oldestIndex,
-        });
+        finishReplay(result.totalMessages, result.oldestIndex);
     }
     /** Single poll cycle: check all watched sessions for new data. */
     async poll() {

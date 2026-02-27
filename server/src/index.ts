@@ -53,16 +53,17 @@ const BASE_SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 
-const DEFAULT_CSP =
-  "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; " +
-  "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'";
-
-function cspWithNonce(nonce: string): string {
+function buildCsp(nonce?: string): string {
+  const scriptSrc = nonce
+    ? `'self' 'nonce-${nonce}' blob:`
+    : "'self' blob:";
   return (
-    `default-src 'self'; script-src 'self' 'nonce-${nonce}' blob:; worker-src 'self' blob:; ` +
-    `style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'`
+    `default-src 'self'; script-src ${scriptSrc}; worker-src 'self' blob:; ` +
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
   );
 }
+
+const DEFAULT_CSP = buildCsp();
 
 function setSecurityHeaders(res: import("node:http").ServerResponse): void {
   for (const [key, value] of Object.entries(BASE_SECURITY_HEADERS)) {
@@ -78,7 +79,7 @@ function serveIndex(
 ): void {
   const nonce = randomBytes(16).toString("base64");
   const html = data.toString("utf-8").replace(/<script\b/g, (m) => `${m} nonce="${nonce}"`);
-  res.setHeader("Content-Security-Policy", cspWithNonce(nonce));
+  res.setHeader("Content-Security-Policy", buildCsp(nonce));
   res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-cache" });
   res.end(html);
 }

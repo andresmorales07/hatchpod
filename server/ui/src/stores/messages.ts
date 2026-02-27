@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useAuthStore } from "./auth";
 import { useSessionsStore } from "./sessions";
-import type { NormalizedMessage, SlashCommand, ExtractedTask, ToolSummary, PermissionModeCommonCommon } from "@shared/types";
+import type { NormalizedMessage, SlashCommand, ExtractedTask, ToolSummary, PermissionModeCommon } from "@shared/types";
 
 type ServerMessage =
   | { type: "message"; message: NormalizedMessage }

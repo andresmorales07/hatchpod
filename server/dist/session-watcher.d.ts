@@ -90,6 +90,8 @@ export declare class SessionWatcher {
     start(intervalMs?: number): void;
     /** Stop polling. Call on server shutdown. */
     stop(): void;
+    /** Buffered ephemeral state to replay to late-connecting subscribers. */
+    private sendBufferedState;
     /**
      * Replay messages from in-memory store to a single client. Supports
      * pagination via messageLimit (returns the most recent N messages).

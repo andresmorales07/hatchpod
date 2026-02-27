@@ -169,13 +169,11 @@ export function MessageBubble({ message, toolResults }: Props) {
     return null;
   }
 
-  // Hide user messages that only contain tool_result parts (shown inside ToolCard)
   if (message.role === "user") {
+    // Hide user messages that only contain tool_result parts (shown inside ToolCard)
     const hasOnlyToolResults = message.parts.every((p) => p.type === "tool_result");
     if (hasOnlyToolResults) return null;
-  }
 
-  if (message.role === "user") {
     const text = message.parts
       .filter((p): p is TextPart => p.type === "text")
       .map((p) => p.text)

@@ -6,12 +6,14 @@ interface Props {
 }
 
 export function ContextUsageBadge({ percentUsed }: Props) {
-  const colorClass =
-    percentUsed >= 90
-      ? "bg-red-400/15 text-red-400 border-transparent"
-      : percentUsed >= 75
-        ? "bg-amber-500/15 text-amber-400 border-transparent"
-        : "bg-muted-foreground/10 text-muted-foreground border-transparent";
+  let colorClass: string;
+  if (percentUsed >= 90) {
+    colorClass = "bg-red-400/15 text-red-400 border-transparent";
+  } else if (percentUsed >= 75) {
+    colorClass = "bg-amber-500/15 text-amber-400 border-transparent";
+  } else {
+    colorClass = "bg-muted-foreground/10 text-muted-foreground border-transparent";
+  }
 
   return (
     <Badge

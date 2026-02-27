@@ -1,5 +1,4 @@
-import type { NormalizedMessage, PermissionModeCommon, SlashCommand, ToolSummary } from "./providers/types.js";
-import type { ApprovalDecision } from "./providers/types.js";
+import type { NormalizedMessage, PermissionModeCommon, SlashCommand, ToolSummary, ApprovalDecision } from "./providers/types.js";
 
 // ── Serializable types — re-exported from Zod schemas ──
 

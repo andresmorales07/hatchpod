@@ -87,9 +87,7 @@ export function authenticateToken(token: string, ip: string): boolean | "rate_li
   return valid;
 }
 
-export function getRequestIp(req: IncomingMessage): string {
-  return getClientIp(req);
-}
+export const getRequestIp = getClientIp;
 
 export function sendUnauthorized(res: ServerResponse): void {
   res.writeHead(401, { "Content-Type": "application/json" });

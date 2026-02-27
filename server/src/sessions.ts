@@ -198,6 +198,16 @@ export async function createSession(
 
 // ── Session execution ──
 
+/** Transition watcher to poll mode, logging but not throwing on failure. */
+async function safeTransitionToPoll(sessionId: string): Promise<void> {
+  if (!watcher) return;
+  try {
+    await watcher.transitionToPoll(sessionId);
+  } catch (err) {
+    console.warn(`Failed to transition watcher to poll for ${sessionId}:`, err);
+  }
+}
+
 async function runSession(
   session: ActiveSession,
   prompt: string,
@@ -354,22 +364,14 @@ async function runSession(
       // Remap the watcher entry then transition to poll mode (one atomic step
       // replaces the old remap → syncOffset → unsuppress dance).
       watcher.remap(oldId, session.sessionId);
-      try {
-        await watcher.transitionToPoll(session.sessionId);
-      } catch (err) {
-        console.warn(`Failed to transition watcher to poll for ${session.sessionId}:`, err);
-      }
+      await safeTransitionToPoll(session.sessionId);
       watcher.pushEvent(session.sessionId, {
         type: "session_redirected",
         newSessionId: session.sessionId,
       });
     } else {
       // No remap needed (e.g., resumed session) — transition to poll.
-      try {
-        await watcher.transitionToPoll(session.sessionId);
-      } catch (err) {
-        console.warn(`Failed to transition watcher to poll for ${session.sessionId}:`, err);
-      }
+      await safeTransitionToPoll(session.sessionId);
     }
 
     // Status may have been mutated externally by interruptSession()
@@ -379,11 +381,7 @@ async function runSession(
     }
   } catch (err) {
     // Transition to poll on error so the watcher can take over.
-    try {
-      await watcher.transitionToPoll(session.sessionId);
-    } catch (pollErr) {
-      console.warn(`runSession(${session.sessionId}): failed to transition to poll on error path:`, pollErr);
-    }
+    await safeTransitionToPoll(session.sessionId);
 
     const currentStatus = session.status as ActiveSession["status"];
     const isAbortError = session.abortController.signal.aborted;
