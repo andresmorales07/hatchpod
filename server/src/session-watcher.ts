@@ -295,7 +295,7 @@ export class SessionWatcher {
 
     if (event.type === "git_diff_stat") {
       const e = event as ServerMessage & { type: "git_diff_stat" };
-      watched.lastGitDiffStat = { files: e.files, totalInsertions: e.totalInsertions, totalDeletions: e.totalDeletions };
+      watched.lastGitDiffStat = { files: e.files, totalInsertions: e.totalInsertions, totalDeletions: e.totalDeletions, ...(e.branch !== undefined ? { branch: e.branch } : {}) };
     }
 
     // Buffer subagent state for late subscribers

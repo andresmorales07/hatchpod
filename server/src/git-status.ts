@@ -7,6 +7,20 @@ const execFile = promisify(execFileCb);
 const GIT_TIMEOUT_MS = 5_000;
 const GIT_MAX_BUFFER = 10 * 1024 * 1024; // 10 MB (default 1 MB too small for large repos)
 
+export async function getGitBranch(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFile(
+      "git",
+      ["symbolic-ref", "--short", "HEAD"],
+      { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
+    );
+    return stdout.trim() || null;
+  } catch {
+    // Detached HEAD or not a git repo
+    return null;
+  }
+}
+
 /**
  * Compute a compact git diff stat for the given directory.
  * Returns null if the directory is not inside a git repo.
@@ -120,9 +134,12 @@ export async function computeGitDiffStat(
     // Non-critical
   }
 
+  const branch = await getGitBranch(cwd);
+
   return {
     files: Array.from(files.values()),
     totalInsertions,
     totalDeletions,
+    ...(branch !== null ? { branch } : {}),
   };
 }

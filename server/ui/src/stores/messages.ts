@@ -18,7 +18,7 @@ type ServerMessage =
   | { type: "subagent_completed"; taskId: string; toolUseId: string; status: "completed" | "failed" | "stopped"; summary: string }
   | { type: "compacting"; isCompacting: boolean }
   | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
-  | { type: "git_diff_stat"; files: GitFileStat[]; totalInsertions: number; totalDeletions: number }
+  | { type: "git_diff_stat"; files: GitFileStat[]; totalInsertions: number; totalDeletions: number; branch?: string }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
@@ -37,6 +37,7 @@ interface GitDiffStat {
   files: GitFileStat[];
   totalInsertions: number;
   totalDeletions: number;
+  branch?: string;
 }
 
 export interface SubagentState {
@@ -425,6 +426,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
                 files: msg.files,
                 totalInsertions: msg.totalInsertions,
                 totalDeletions: msg.totalDeletions,
+                ...(msg.branch !== undefined ? { branch: msg.branch } : {}),
               },
             });
             break;

@@ -15,6 +15,7 @@ interface GitDiffStat {
   files: GitFileStat[];
   totalInsertions: number;
   totalDeletions: number;
+  branch?: string;
 }
 
 interface Props {
@@ -38,6 +39,12 @@ export function GitDiffBar({ stat }: Props) {
           className="flex items-center gap-2 w-full py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <GitBranch className="size-3.5 shrink-0" />
+          {stat.branch && (
+            <>
+              <span className="font-mono">{stat.branch}</span>
+              <span className="text-muted-foreground/40">&middot;</span>
+            </>
+          )}
           <span>
             {fileCount} {fileCount === 1 ? "file" : "files"}
           </span>

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach } from "vitest";
 import { GitDiffStatSchema } from "../src/schemas/git.js";
-import { computeGitDiffStat } from "../src/git-status.js";
+import { computeGitDiffStat, getGitBranch } from "../src/git-status.js";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 describe("GitDiffStatSchema", () => {
-  it("validates a valid diff stat", () => {
+  it("validates a valid diff stat without branch", () => {
     const stat = {
       files: [
         { path: "src/foo.ts", insertions: 5, deletions: 2, binary: false, untracked: false, staged: false },
@@ -16,6 +16,16 @@ describe("GitDiffStatSchema", () => {
       ],
       totalInsertions: 5,
       totalDeletions: 2,
+    };
+    expect(GitDiffStatSchema.parse(stat)).toEqual(stat);
+  });
+
+  it("validates a valid diff stat with branch", () => {
+    const stat = {
+      files: [],
+      totalInsertions: 0,
+      totalDeletions: 0,
+      branch: "main",
     };
     expect(GitDiffStatSchema.parse(stat)).toEqual(stat);
   });
@@ -64,7 +74,23 @@ describe("computeGitDiffStat", () => {
 
   it("returns empty stat for clean repo", async () => {
     const result = await computeGitDiffStat(repoDir);
-    expect(result).toEqual({ files: [], totalInsertions: 0, totalDeletions: 0 });
+    expect(result).toMatchObject({ files: [], totalInsertions: 0, totalDeletions: 0 });
+  });
+
+  it("includes branch name on a named branch", async () => {
+    const result = await computeGitDiffStat(repoDir);
+    expect(result).not.toBeNull();
+    expect(typeof result!.branch).toBe("string");
+    expect(result!.branch!.length).toBeGreaterThan(0);
+  });
+
+  it("omits branch in detached HEAD state", async () => {
+    const { stdout } = await execFile("git", ["-C", repoDir, "rev-parse", "HEAD"]);
+    const sha = stdout.trim();
+    await execFile("git", ["-C", repoDir, "checkout", "--detach", sha]);
+    const result = await computeGitDiffStat(repoDir);
+    expect(result).not.toBeNull();
+    expect(result!.branch).toBeUndefined();
   });
 
   it("detects unstaged modifications", async () => {
@@ -111,6 +137,58 @@ describe("computeGitDiffStat", () => {
     const result = await computeGitDiffStat(repoDir);
     expect(result).not.toBeNull();
     expect(result!.files.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ── getGitBranch tests ──
+
+describe("getGitBranch", () => {
+  let repoDir: string;
+
+  async function createTempRepo(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "git-branch-test-"));
+    await execFile("git", ["init", dir]);
+    await execFile("git", ["-C", dir, "config", "user.email", "test@test.com"]);
+    await execFile("git", ["-C", dir, "config", "user.name", "Test"]);
+    await writeFile(join(dir, "initial.txt"), "hello\n");
+    await execFile("git", ["-C", dir, "add", "."]);
+    await execFile("git", ["-C", dir, "commit", "-m", "initial"]);
+    return dir;
+  }
+
+  beforeEach(async () => {
+    repoDir = await createTempRepo();
+  });
+
+  afterEach(async () => {
+    await rm(repoDir, { recursive: true, force: true });
+  });
+
+  it("returns null for a non-git directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "no-git-branch-"));
+    const result = await getGitBranch(dir);
+    expect(result).toBeNull();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("returns the branch name on a named branch", async () => {
+    const result = await getGitBranch(repoDir);
+    expect(result).not.toBeNull();
+    expect(typeof result).toBe("string");
+    expect(result!.length).toBeGreaterThan(0);
+  });
+
+  it("returns null in detached HEAD state", async () => {
+    const { stdout } = await execFile("git", ["-C", repoDir, "rev-parse", "HEAD"]);
+    await execFile("git", ["-C", repoDir, "checkout", "--detach", stdout.trim()]);
+    const result = await getGitBranch(repoDir);
+    expect(result).toBeNull();
+  });
+
+  it("returns the correct name after branch rename", async () => {
+    await execFile("git", ["-C", repoDir, "branch", "-m", "my-feature"]);
+    const result = await getGitBranch(repoDir);
+    expect(result).toBe("my-feature");
   });
 });
 
@@ -184,6 +262,41 @@ describe("SessionWatcher git_diff_stat buffering", () => {
     expect(gitMsg).toBeDefined();
     expect(gitMsg.totalInsertions).toBe(3);
     expect(gitMsg.files).toHaveLength(1);
+  });
+
+  it("preserves branch in replayed git_diff_stat", async () => {
+    const mockAdapter = {
+      getSessionFilePath: async () => null,
+      normalizeFileLine: () => null,
+      getMessages: async () => ({ messages: [], tasks: [], totalMessages: 0, hasMore: false, oldestIndex: 0 }),
+      listSessions: async () => [],
+      getSessionHistory: async () => [],
+      run: () => { throw new Error("not implemented"); },
+    } as any;
+
+    const watcher = new SessionWatcher(mockAdapter);
+    const sessionId = "test-git-branch";
+    watcher.setMode(sessionId, "push");
+
+    watcher.pushEvent(sessionId, {
+      type: "git_diff_stat",
+      files: [],
+      totalInsertions: 0,
+      totalDeletions: 0,
+      branch: "feature/my-branch",
+    } as any);
+
+    const messages: any[] = [];
+    const mockWs = {
+      readyState: 1,
+      send: (data: string) => { messages.push(JSON.parse(data)); },
+    } as any;
+
+    await watcher.subscribe(sessionId, mockWs);
+
+    const gitMsg = messages.find((m: any) => m.type === "git_diff_stat");
+    expect(gitMsg).toBeDefined();
+    expect(gitMsg.branch).toBe("feature/my-branch");
   });
 
   it("clears git_diff_stat on terminal status", async () => {

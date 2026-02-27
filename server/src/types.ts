@@ -58,7 +58,7 @@ export type ServerMessage =
   | { type: "subagent_completed"; taskId: string; toolUseId: string; status: "completed" | "failed" | "stopped"; summary: string }
   | { type: "compacting"; isCompacting: boolean }
   | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
-  | { type: "git_diff_stat"; files: Array<{ path: string; insertions: number; deletions: number; binary: boolean; untracked: boolean; staged: boolean }>; totalInsertions: number; totalDeletions: number }
+  | { type: "git_diff_stat"; files: Array<{ path: string; insertions: number; deletions: number; binary: boolean; untracked: boolean; staged: boolean }>; totalInsertions: number; totalDeletions: number; branch?: string }
   | { type: "ping" }
   | { type: "error"; message: string };
 

@@ -17,6 +17,7 @@ export const GitDiffStatSchema = z
     files: z.array(GitFileStatSchema),
     totalInsertions: z.number().int().nonnegative(),
     totalDeletions: z.number().int().nonnegative(),
+    branch: z.string().optional().openapi({ description: "Current git branch name; absent in detached HEAD state" }),
   })
   .openapi("GitDiffStat");
 
