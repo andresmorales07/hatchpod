@@ -62,6 +62,7 @@ export interface ProviderSessionOptions {
   onCompacting?: (isCompacting: boolean) => void;
   onContextUsage?: (usage: { inputTokens: number; contextWindow: number }) => void;
   onModeChanged?: (newMode: PermissionModeCommon) => void;
+  onSessionIdResolved?: (sessionId: string) => void;
 }
 
 export interface ProviderSessionResult {

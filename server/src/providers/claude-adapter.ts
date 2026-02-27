@@ -351,6 +351,15 @@ export class ClaudeAdapter implements ProviderAdapter {
               index: messageIndex++,
             };
             yield compactMsg;
+          } else if (sysMsg.subtype === "init") {
+            const sessionId = (sysMsg as { session_id?: string }).session_id;
+            if (sessionId) {
+              try {
+                options.onSessionIdResolved?.(sessionId);
+              } catch (err) {
+                console.error("claude-adapter: onSessionIdResolved callback failed:", err);
+              }
+            }
           } else if (sysMsg.subtype !== undefined) {
             console.warn(`claude-adapter: unhandled system subtype "${sysMsg.subtype}"`, sysMsg);
           }

@@ -315,6 +315,27 @@ async function runSession(
           percentUsed,
         });
       },
+      onSessionIdResolved: (realId: string) => {
+        // Remap the session to the real CLI session ID as soon as it's known
+        // (from the SDK's init message, before any visible messages arrive).
+        // This eliminates the window where listSessionsWithHistory() would see
+        // the live session under a temp UUID and the JSONL file under the real ID,
+        // causing a spurious duplicate "history" entry in the session list.
+        if (realId === session.sessionId) return;
+        const oldId = session.sessionId;
+        session.sessionId = realId;
+        sessions.delete(oldId);
+        sessions.set(session.sessionId, session);
+        sessionAliases.set(oldId, session.sessionId);
+        watcher!.remap(oldId, session.sessionId);
+        // session_redirected lets connected clients update their session ID.
+        // transitionToPoll() is NOT called here — the session is still running
+        // in push mode; that transition happens at the end of runSession().
+        watcher!.pushEvent(session.sessionId, {
+          type: "session_redirected",
+          newSessionId: session.sessionId,
+        });
+      },
     });
 
     // Push the user prompt as a message. The watcher stores it in messages[]
