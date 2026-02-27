@@ -177,7 +177,7 @@ export function ToolGroupCard({
   toolUses: ToolUsePart[];
   toolResults: Map<string, ToolResultPart>;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const count = toolUses.length;
 
   // Collect up to 3 unique tool names for the header label
