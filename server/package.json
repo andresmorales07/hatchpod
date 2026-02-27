@@ -1,6 +1,6 @@
 {
   "name": "hatchpod-api",
-  "version": "0.18.3",
+  "version": "0.18.4",
   "description": "Web UI for Claude Code — manage sessions from your browser",
   "type": "module",
   "bin": {
