@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 Cut a new release by bumping the version, rebuilding dist, committing, tagging, and pushing.
 
-**Why the order matters:** `server/dist/` is tracked in git — the tag must point to a commit that includes both the rebuilt dist and the version bump together, before the tag is created.
+**Why the order matters:** The tag must point to a commit that includes the rebuilt dist and the version bump together, before the tag is created. Note: `server/dist/` is gitignored — the Dockerfile rebuilds it at container build time and `prepublishOnly` rebuilds it before `npm publish`. Do not attempt to stage `server/dist/`.
 
 ## Steps
 
@@ -27,7 +27,6 @@ Cut a new release by bumping the version, rebuilding dist, committing, tagging, 
    ```bash
    cd server && npm run build   # compiles TypeScript → dist/
    cd server && npm test        # runs vitest unit tests
-   git add server/dist/         # stage the rebuilt dist
    ```
 
 5. Stage the version files:
