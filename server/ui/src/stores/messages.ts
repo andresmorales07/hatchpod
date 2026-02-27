@@ -161,9 +161,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   currentMode: null,
 
   connect: (sessionId: string) => {
+    // Capture remap state BEFORE clearing _redirectingTo — the guard below
+    // needs it, and so does the reset-path decision further down.
+    const isRemap = _redirectingTo === sessionId;
+    console.debug(`[WS] connect(${sessionId.slice(0, 8)}) isRemap=${isRemap} readyState=${ws?.readyState ?? "null"} attempts=${reconnectAttempts}`);
+
     // After a session redirect, the WebSocket is already connected to the
     // new session ID (watcher remapped it). Skip the disconnect/reconnect cycle.
-    if (_redirectingTo === sessionId && ws?.readyState === WebSocket.OPEN) {
+    if (isRemap && ws?.readyState === WebSocket.OPEN) {
       _redirectingTo = null;
       clearTimeout(_redirectTimeout);
       return;
@@ -173,36 +178,42 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     get().disconnect();
     currentSessionId = sessionId;
-
     thinkingStart = null;
-    seenIndices = new Set();
-    set({
-      messages: [],
-      status: "starting",
-      source: null,
-      connected: false,
-      pendingApproval: null,
-      slashCommands: [],
-      thinkingText: "",
-      thinkingStartTime: null,
-      lastError: null,
-      hasOlderMessages: false,
-      loadingOlderMessages: false,
-      oldestLoadedIndex: 0,
-      totalMessageCount: 0,
-      serverTasks: [],
-      activeSubagents: new Map(),
-      isCompacting: false,
-      contextUsage: null,
-      gitDiffStat: null,
-      currentMode: null,
-    });
 
-    // Initialize currentMode from session DTO before WS events arrive
-    const sessStore = useSessionsStore.getState();
-    const initialSession = sessStore.sessions.find((s) => s.id === sessionId);
-    if (initialSession?.permissionMode) {
-      set({ currentMode: initialSession.permissionMode });
+    if (isRemap) {
+      // Socket dropped in the remap window — soft reset: preserve messages and
+      // seenIndices so reconnect replay deduplicates without a blank-screen flash.
+      set({ connected: false, lastError: null });
+    } else {
+      seenIndices = new Set();
+      set({
+        messages: [],
+        status: "starting",
+        source: null,
+        connected: false,
+        pendingApproval: null,
+        slashCommands: [],
+        thinkingText: "",
+        thinkingStartTime: null,
+        lastError: null,
+        hasOlderMessages: false,
+        loadingOlderMessages: false,
+        oldestLoadedIndex: 0,
+        totalMessageCount: 0,
+        serverTasks: [],
+        activeSubagents: new Map(),
+        isCompacting: false,
+        contextUsage: null,
+        gitDiffStat: null,
+        currentMode: null,
+      });
+
+      // Initialize currentMode from session DTO before WS events arrive
+      const sessStore = useSessionsStore.getState();
+      const initialSession = sessStore.sessions.find((s) => s.id === sessionId);
+      if (initialSession?.permissionMode) {
+        set({ currentMode: initialSession.permissionMode });
+      }
     }
 
     const doConnect = () => {
@@ -431,7 +442,12 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // sessionId is now stale (old pre-remap ID).
         const wasActive = ws === socket;
         ws = null;
-        _redirectingTo = null;
+        // Preserve the remap guard if the socket closed while we are still
+        // navigating to the remapped session. The upcoming connect() call uses
+        // _redirectingTo to choose the soft-reset path (no message wipe).
+        if (_redirectingTo !== currentSessionId) {
+          _redirectingTo = null;
+        }
         clearTimeout(heartbeatTimer);
         // Stale socket (already replaced by a newer connect()) — ignore.
         if (!wasActive) return;
@@ -439,6 +455,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         // Determine which session ID to reconnect to. After a session remap the
         // closure's sessionId is the old temp UUID; currentSessionId is the real one.
         const reconnectId = currentSessionId;
+        console.warn(`[WS] onclose: closureId=${sessionId.slice(0, 8)} reconnectId=${reconnectId?.slice(0, 8) ?? "null"} attempts=${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} _redirectingTo=${_redirectingTo?.slice(0, 8) ?? "null"}`);
         if (!reconnectId) return; // Navigated away entirely — no reconnect needed.
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           const delay = BASE_RECONNECT_MS * Math.pow(2, reconnectAttempts);
@@ -454,6 +471,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             }, delay);
           }
         } else {
+          console.error(`[WS] max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached for ${reconnectId.slice(0, 8)}`);
           set({ status: "disconnected", lastError: "Connection lost — reload to reconnect" });
         }
       };
@@ -471,7 +489,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   disconnect: () => {
     // During a session redirect, the WebSocket is still valid (watcher remapped it).
     // Skip teardown so the connection survives React's effect cleanup cycle.
-    if (_redirectingTo !== null) return;
+    if (_redirectingTo !== null) {
+      console.debug(`[WS] disconnect() skipped — redirecting to ${_redirectingTo.slice(0, 8)}`);
+      return;
+    }
     currentSessionId = null;
     clearTimeout(reconnectTimer);
     clearTimeout(heartbeatTimer);
@@ -583,7 +604,11 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
 
     // Normal mode — send via WebSocket
     set({ lastError: null });
-    return send({ type: "prompt", text });
+    const sent = send({ type: "prompt", text });
+    if (!sent) {
+      console.warn(`[WS] sendPrompt failed: readyState=${ws?.readyState ?? "null"} currentSessionId=${currentSessionId?.slice(0, 8) ?? "null"}`);
+    }
+    return sent;
   },
 
   approve: (toolUseId, answers) => {
