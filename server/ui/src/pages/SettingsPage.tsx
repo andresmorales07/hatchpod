@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSettingsStore } from "@/stores/settings";
 import { useSessionsStore } from "@/stores/sessions";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,11 @@ export function SettingsPage() {
   const [localFontSize, setLocalFontSize] = useState(String(terminalFontSize));
   const [localScrollback, setLocalScrollback] = useState(String(terminalScrollback));
   const [localShell, setLocalShell] = useState(terminalShell);
+
+  // Re-sync local state when store values change (e.g. after fetchSettings resolves)
+  useEffect(() => { setLocalFontSize(String(terminalFontSize)); }, [terminalFontSize]);
+  useEffect(() => { setLocalScrollback(String(terminalScrollback)); }, [terminalScrollback]);
+  useEffect(() => { setLocalShell(terminalShell); }, [terminalShell]);
 
   const commitFontSize = () => {
     const n = parseInt(localFontSize, 10);
