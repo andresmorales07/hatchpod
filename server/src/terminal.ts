@@ -44,7 +44,7 @@ function addToBuffer(session: PtySession, chunk: string): void {
 export function createPtySession(shell: string, cwd: string): string {
   const sessionId = randomUUID();
 
-  const ptyProcess = pty.spawn(shell, [], {
+  const ptyProcess = pty.spawn(shell, ["-l"], {
     name: "xterm-256color",
     cols: 80,
     rows: 24,

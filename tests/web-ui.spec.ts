@@ -172,3 +172,85 @@ test('mobile viewport renders session list without sidebar', async ({ page }) =>
   await expect(page.locator('[title="Collapse sidebar"]')).not.toBeVisible();
   await expect(page.locator('[title="Expand sidebar"]')).not.toBeVisible();
 });
+
+// --- Mobile nav bar tests ---
+
+test('mobile nav bar is visible on session list page', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+
+  const nav = page.getByRole('navigation', { name: 'Bottom navigation' });
+  await expect(nav).toBeVisible({ timeout: 5000 });
+
+  // All three tabs present
+  await expect(nav.getByText('Sessions')).toBeVisible();
+  await expect(nav.getByText('Terminal')).toBeVisible();
+  await expect(nav.getByText('Settings')).toBeVisible();
+});
+
+test('mobile nav bar Sessions tab is active on session list', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+
+  const nav = page.getByRole('navigation', { name: 'Bottom navigation' });
+  await expect(nav).toBeVisible({ timeout: 5000 });
+
+  // Sessions tab button should carry the primary color class (active)
+  const sessionsBtn = nav.getByRole('button', { name: /Sessions/i });
+  await expect(sessionsBtn).toHaveClass(/text-primary/);
+
+  // Terminal and Settings tabs should be muted (inactive)
+  const terminalBtn = nav.getByRole('button', { name: /Terminal/i });
+  await expect(terminalBtn).toHaveClass(/text-muted-foreground/);
+});
+
+test('mobile nav bar navigates to Terminal page', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+
+  const nav = page.getByRole('navigation', { name: 'Bottom navigation' });
+  await nav.getByRole('button', { name: /Terminal/i }).click();
+
+  // Terminal page shows a connection status indicator
+  await expect(page.getByText(/Connecting|Connected|Disconnected/)).toBeVisible({ timeout: 5000 });
+
+  // Nav bar still visible on Terminal page
+  await expect(nav).toBeVisible();
+
+  // Terminal tab is now active
+  const terminalBtn = nav.getByRole('button', { name: /Terminal/i });
+  await expect(terminalBtn).toHaveClass(/text-primary/);
+});
+
+test('mobile nav bar navigates to Settings page', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+
+  const nav = page.getByRole('navigation', { name: 'Bottom navigation' });
+  await nav.getByRole('button', { name: /Settings/i }).click();
+
+  // Settings page renders a settings form
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible({ timeout: 5000 });
+
+  // Nav bar still visible on Settings page
+  await expect(nav).toBeVisible();
+
+  // Settings tab is active
+  const settingsBtn = nav.getByRole('button', { name: /Settings/i });
+  await expect(settingsBtn).toHaveClass(/text-primary/);
+});
+
+test('mobile nav bar is hidden on chat page', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+
+  // Navigate directly to a session URL (any UUID — the WS will report history status)
+  await page.goto('/#/session/00000000-0000-0000-0000-000000000001');
+
+  // Chat page should render (composer or back button visible)
+  await expect(page.getByRole('button', { name: '' }).filter({ has: page.locator('svg') }).first()).toBeVisible({ timeout: 5000 });
+
+  // Bottom nav bar must NOT be visible on the chat page
+  const nav = page.getByRole('navigation', { name: 'Bottom navigation' });
+  await expect(nav).not.toBeVisible();
+});

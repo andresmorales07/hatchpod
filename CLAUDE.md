@@ -260,6 +260,8 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 - s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
 - `S6_KEEP_ENV=1` ensures environment variables propagate to all services
 - When adding or removing software from the Dockerfile, update the "What's Included" table in README.md to match
+- **Login shell PATH additions** — `/etc/profile` resets `PATH` before sourcing `/etc/profile.d/`, discarding any Docker `ENV PATH`. System-wide PATH additions (npm-global, custom tools) must go in `rootfs/etc/profile.d/` to be visible in all login shells (ttyd, web terminal, SSH). `.bashrc` is for interactive non-login shells only — it early-returns if not interactive and is never sourced by a login shell unless `~/.profile` explicitly sources it.
+- **Dockerfile skel ordering** — `useradd -m` (Dockerfile line ~110) copies `/etc/skel` into the home dir at user-creation time. `COPY rootfs/ /` runs after — so custom dotfiles in `rootfs/etc/skel/` are NOT applied to `/home/hatchpod/` at build time (only to `/etc/skel/` for future volumes). `init.sh` only seeds skel files when they don't exist (volume-persistence semantics). Prefer `rootfs/etc/profile.d/` for changes that must be in place from the first container start.
 - Tailscale and dotfiles are opt-in features controlled by env vars (`TS_AUTHKEY`, `DOTFILES_REPO`)
 - `docker-compose.yml` includes `cap_add: NET_ADMIN` and `/dev/net/tun` device for Tailscale kernel TUN mode; harmless when Tailscale is not enabled
 - The Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) must only be imported in `server/src/providers/claude-adapter.ts`. All other server and UI code uses the normalized `NormalizedMessage` / `ProviderAdapter` types from `providers/types.ts`. The WebSocket protocol sends `{ type: "message" }` events with normalized payloads. The `ProviderAdapter` interface exists for testability, not multi-provider ambition — `ProviderSessionOptions` contains several Claude-specific concepts (`permissionMode`, `modeTransitionTools`, `onSubagentStarted/Completed`, `onCompacting`) with no equivalent in other SDKs.
@@ -299,20 +301,25 @@ Ports are configurable via `TTYD_PORT` and `API_PORT` env vars (default to 7681/
 
 **Important:** Always run tests by building and running the Docker container first — do not run them against an externally running instance. The tests depend on the container's ttyd configuration (writable mode, auth credentials, ping interval).
 
+**Rate limiter and test isolation:** The API rate limiter tracks failed auth attempts in memory (10 failures / 15 min per IP). Always use a **fresh container** for each Playwright run — running the suite multiple times against the same container exhausts the limit and subsequent runs get 429 even with the correct password. Always `docker rm -f hatchpod-test` before starting a new run.
+
+**`API_PASSWORD` env inheritance:** When running inside hatchpod, `API_PASSWORD` is already set to the production password. You must explicitly pass `API_PASSWORD=changeme` in step 2; otherwise tests authenticate against the test container using the wrong password and cascade-fail with 401.
+
 ```bash
 # 1. Build and run the container (use offset ports when running inside hatchpod)
 docker build -t hatchpod:latest .
 docker run -d --name hatchpod-test \
   -p 17681:7681 -p 12222:2222 -p 18080:8080 \
+  --runtime runc \
   -e TTYD_USERNAME=hatchpod \
   -e TTYD_PASSWORD=changeme \
   -e API_PASSWORD=changeme \
   -e ENABLE_TEST_PROVIDER=1 \
   hatchpod:latest
 
-# 2. Run tests (pass offset ports via env vars)
+# 2. Run tests (pass offset ports AND API_PASSWORD — don't inherit the production password)
 npm install
-TTYD_PORT=17681 API_PORT=18080 npx playwright test
+TTYD_PORT=17681 API_PORT=18080 API_PASSWORD=changeme npx playwright test
 
 # 3. Clean up
 docker rm -f hatchpod-test

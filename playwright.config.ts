@@ -99,5 +99,14 @@ export default defineConfig({
         trace: 'on-first-retry',
       },
     },
+    {
+      name: 'terminal',
+      testMatch: 'terminal.spec.ts',
+      use: {
+        baseURL: `http://localhost:${apiPort}`,
+        browserName: 'chromium',
+        trace: 'on-first-retry',
+      },
+    },
   ],
 });
