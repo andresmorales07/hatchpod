@@ -4,10 +4,11 @@ import { useSessionsStore } from "@/stores/sessions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Moon, Sun, Terminal, Info } from "lucide-react";
+import { Moon, Sun, Terminal, Info, Bot } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function SettingsPage() {
-  const { theme, terminalFontSize, terminalScrollback, terminalShell, updateSettings } =
+  const { theme, terminalFontSize, terminalScrollback, terminalShell, claudeModel, claudeEffort, updateSettings } =
     useSettingsStore();
   const { version, browseRoot } = useSessionsStore();
 
@@ -48,6 +49,18 @@ export function SettingsPage() {
     }
   };
 
+  const handleModelChange = (model: typeof claudeModel) => {
+    const updates: Parameters<typeof updateSettings>[0] = { claudeModel: model };
+    if (model !== "claude-opus-4-6" && claudeEffort === "max") {
+      updates.claudeEffort = "high";
+    }
+    updateSettings(updates);
+  };
+
+  const handleEffortChange = (effort: typeof claudeEffort) => {
+    updateSettings({ claudeEffort: effort });
+  };
+
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-background">
       <div className="max-w-2xl w-full mx-auto px-4 py-6 flex flex-col gap-4">
@@ -83,6 +96,69 @@ export function SettingsPage() {
                 <Sun className="size-4" />
                 Light
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Claude */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Bot className="size-4 text-muted-foreground" />
+              <CardTitle>Claude</CardTitle>
+            </div>
+            <CardDescription>Default model and effort for new sessions.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div>
+              <p className="text-sm font-medium mb-2">Model</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "Auto", value: undefined },
+                  { label: "Haiku", value: "claude-haiku-4-5-20251001" as const },
+                  { label: "Sonnet", value: "claude-sonnet-4-6" as const },
+                  { label: "Opus", value: "claude-opus-4-6" as const },
+                ].map(({ label, value }) => (
+                  <button
+                    key={label}
+                    onClick={() => handleModelChange(value)}
+                    className={cn(
+                      "px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                      claudeModel === value
+                        ? "bg-primary/15 border-primary text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">Effort</p>
+              <div className="flex flex-wrap gap-2">
+                {(["low", "medium", "high", "max"] as const).map((effort) => {
+                  const isMaxDisabled = effort === "max" && claudeModel !== "claude-opus-4-6";
+                  return (
+                    <button
+                      key={effort}
+                      onClick={() => !isMaxDisabled && handleEffortChange(effort)}
+                      disabled={isMaxDisabled}
+                      className={cn(
+                        "px-3 py-2 rounded-lg border text-sm font-medium transition-colors capitalize",
+                        claudeEffort === effort && !isMaxDisabled
+                          ? "bg-primary/15 border-primary text-primary"
+                          : isMaxDisabled
+                            ? "border-border text-muted-foreground opacity-40 cursor-not-allowed"
+                            : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      )}
+                    >
+                      {effort}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">Max effort is only available with Opus.</p>
             </div>
           </CardContent>
         </Card>
