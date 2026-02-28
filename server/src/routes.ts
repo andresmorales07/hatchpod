@@ -143,6 +143,14 @@ export async function handleRequest(
     }
     const parsed = result.data;
 
+    // Read persisted defaults; fill in any missing model/effort from request body
+    const savedSettings = await readSettings();
+    const sessionRequest = {
+      ...parsed,
+      model: parsed.model ?? savedSettings.claudeModel,
+      effort: parsed.effort ?? savedSettings.claudeEffort,
+    };
+
     // Imperative checks that depend on runtime config (not expressible in a static schema)
     if (parsed.permissionMode === "bypassPermissions" && !ALLOW_BYPASS_PERMISSIONS) {
       json(res, 403, { error: "bypassPermissions is disabled; set ALLOW_BYPASS_PERMISSIONS=1 to enable" });
@@ -154,7 +162,7 @@ export async function handleRequest(
     }
 
     try {
-      const sessionResult = await createSession(parsed);
+      const sessionResult = await createSession(sessionRequest);
       json(res, 201, { id: sessionResult.id, status: sessionResult.status });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

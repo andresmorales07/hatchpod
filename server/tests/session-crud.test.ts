@@ -131,4 +131,20 @@ describe("Session CRUD", () => {
     expect(session).toHaveProperty("summary");
     expect(session).toHaveProperty("lastModified");
   });
+
+  it("accepts effort in POST /api/sessions body", async () => {
+    const res = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ provider: "test", effort: "low" }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects invalid effort in POST /api/sessions body", async () => {
+    const res = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ provider: "test", effort: "extreme" }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
