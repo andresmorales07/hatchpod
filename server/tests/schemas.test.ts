@@ -7,7 +7,7 @@ import {
   SubagentCompletedEventSchema,
   isPathContained,
 } from "../src/schemas/index.js";
-import { SettingsSchema, PatchSettingsSchema } from "../src/schemas/settings.js";
+import { SettingsSchema, PatchSettingsSchema, CLAUDE_MODELS } from "../src/schemas/settings.js";
 
 describe("CreateSessionRequestSchema", () => {
   it("accepts a valid request with all fields", () => {
@@ -345,7 +345,7 @@ describe("isPathContained", () => {
 
 describe("SettingsSchema", () => {
   it("accepts all valid claudeModel values", () => {
-    for (const model of ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-6"]) {
+    for (const model of CLAUDE_MODELS) {
       const result = SettingsSchema.safeParse({
         theme: "dark",
         terminalFontSize: 14,

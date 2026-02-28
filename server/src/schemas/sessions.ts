@@ -1,6 +1,7 @@
 import { z } from "zod";
 import "./common.js"; // ensure extendZodWithOpenApi runs first
 import { PermissionModeCommonSchema } from "./providers.js";
+import { EFFORT_VALUES } from "./settings.js";
 
 // ── Session status ──
 
@@ -30,7 +31,7 @@ export const CreateSessionRequestSchema = z
       .openapi({ description: "Permission mode for the session" }),
     provider: z.string().optional().openapi({ description: "Provider ID (defaults to 'claude')" }),
     model: z.string().optional().openapi({ description: "Model override" }),
-    effort: z.enum(["low", "medium", "high", "max"]).optional().openapi({ description: "Effort level override" }),
+    effort: z.enum(EFFORT_VALUES).optional().openapi({ description: "Effort level override" }),
     cwd: z
       .string({ message: "invalid cwd" })
       .refine((v) => !v.includes("\0"), { message: "invalid cwd" })

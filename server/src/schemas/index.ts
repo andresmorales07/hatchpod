@@ -71,7 +71,7 @@ export { HealthResponseSchema } from "./health.js";
 export { GitFileStatSchema, GitDiffStatSchema } from "./git.js";
 export type { GitFileStat, GitDiffStat } from "./git.js";
 
-export { SettingsSchema, PatchSettingsSchema } from "./settings.js";
+export { SettingsSchema, PatchSettingsSchema, CLAUDE_MODELS, EFFORT_VALUES } from "./settings.js";
 export type { Settings } from "./settings.js";
 
 export { openApiDocument } from "./registry.js";
