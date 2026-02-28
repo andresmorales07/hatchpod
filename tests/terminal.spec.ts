@@ -12,15 +12,23 @@ function terminalWsUrl(): string {
 }
 
 /** Connect to the terminal WebSocket, auth, and attach a fresh shell session.
- *  Resolves with { ws, sessionId } once the "attached" message arrives.
- *  Collects all output chunks into `output` until the promise resolves.
+ *  Resolves with { ws, sessionId } once the shell has emitted its first output
+ *  (i.e., the prompt is ready), so commands can be sent without any sleep.
  */
 function attachTerminal(shell = '/bin/bash'): Promise<{ ws: WebSocket; sessionId: string; output: string[] }> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(terminalWsUrl());
     const output: string[] = [];
-    let attached = false;
     let sessionId = '';
+    let isAttached = false;
+    let resolved = false;
+
+    const tryResolve = () => {
+      if (!resolved && isAttached && output.length > 0) {
+        resolved = true;
+        resolve({ ws, sessionId, output });
+      }
+    };
 
     ws.on('open', () => {
       ws.send(JSON.stringify({ type: 'auth', token: API_PASSWORD }));
@@ -32,14 +40,15 @@ function attachTerminal(shell = '/bin/bash'): Promise<{ ws: WebSocket; sessionId
       switch (msg.type) {
         case 'attached':
           sessionId = msg.sessionId as string;
-          attached = true;
-          resolve({ ws, sessionId, output });
+          isAttached = true;
+          tryResolve();
           break;
         case 'output':
           output.push(msg.data as string);
+          tryResolve();
           break;
         case 'error':
-          if (!attached) reject(new Error(`Terminal error: ${msg.message as string}`));
+          if (!resolved) reject(new Error(`Terminal error: ${msg.message as string}`));
           break;
       }
     });
@@ -52,27 +61,31 @@ function attachTerminal(shell = '/bin/bash'): Promise<{ ws: WebSocket; sessionId
 /** Send input to the PTY and wait until collected output includes `needle`. */
 function sendAndWait(ws: WebSocket, output: string[], input: string, needle: string, timeoutMs = 10_000): Promise<string> {
   return new Promise((resolve, reject) => {
+    const savedPush = output.push;
+    const cleanup = () => { output.push = savedPush; };
+
     const deadline = setTimeout(() => {
+      cleanup();
       reject(new Error(`Timed out waiting for "${needle}" in terminal output. Got: ${output.join('')}`));
     }, timeoutMs);
 
-    // Flush already-collected output in case it arrived before this call
     const check = () => {
       const full = output.join('');
       if (full.includes(needle)) {
         clearTimeout(deadline);
+        cleanup();
         resolve(full);
       }
     };
 
-    const origPush = output.push.bind(output);
-    output.push = (...args: string[]) => {
-      const result = origPush(...args);
+    // Intercept new chunks so we can react without polling.
+    // cleanup() restores the original push when the promise settles.
+    output.push = function (...args: string[]) {
+      const result = Array.prototype.push.apply(output, args);
       check();
       return result;
     };
 
-    // Send the input
     ws.send(JSON.stringify({ type: 'input', data: input }));
 
     // Check immediately in case output is already buffered
@@ -91,9 +104,6 @@ test('terminal WebSocket attaches and returns a session ID', async () => {
 test('terminal shell PATH includes /usr/local/bin (login shell)', async () => {
   const { ws, output } = await attachTerminal();
 
-  // Wait briefly for the prompt to appear, then query PATH
-  await new Promise((r) => setTimeout(r, 500));
-
   const full = await sendAndWait(ws, output, 'echo $PATH\n', '/usr/local/bin');
   ws.close();
 
@@ -102,8 +112,6 @@ test('terminal shell PATH includes /usr/local/bin (login shell)', async () => {
 
 test('terminal shell PATH includes npm global bin (login shell)', async () => {
   const { ws, output } = await attachTerminal();
-
-  await new Promise((r) => setTimeout(r, 500));
 
   const full = await sendAndWait(ws, output, 'echo $PATH\n', '.npm-global/bin');
   ws.close();
