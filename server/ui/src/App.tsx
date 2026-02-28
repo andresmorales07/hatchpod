@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useMatch } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
@@ -12,6 +12,7 @@ import { ChatPage } from "@/pages/ChatPage";
 import { NewSessionPage } from "@/pages/NewSessionPage";
 import { TerminalPage } from "@/pages/TerminalPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { MobileNavBar } from "@/components/MobileNavBar";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const authenticated = useAuthStore((s) => s.authenticated);
@@ -42,15 +43,22 @@ function DesktopRoutes() {
   );
 }
 
-function MobileRoutes() {
+function MobileLayout() {
+  const isChat = useMatch("/session/:id");
+
   return (
-    <Routes>
-      <Route index element={<SessionListPage />} />
-      <Route path="session/:id" element={<ChatPage />} />
-      <Route path="new" element={<NewSessionPage />} />
-      <Route path="terminal" element={<TerminalPage />} />
-      <Route path="settings" element={<SettingsPage />} />
-    </Routes>
+    <div className="flex flex-col h-dvh">
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Routes>
+          <Route index element={<SessionListPage />} />
+          <Route path="session/:id" element={<ChatPage />} />
+          <Route path="new" element={<NewSessionPage />} />
+          <Route path="terminal" element={<TerminalPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Routes>
+      </div>
+      {!isChat && <MobileNavBar />}
+    </div>
   );
 }
 
@@ -75,7 +83,7 @@ export function App() {
           path="/*"
           element={
             <AuthGuard>
-              {isDesktop ? <DesktopRoutes /> : <MobileRoutes />}
+              {isDesktop ? <DesktopRoutes /> : <MobileLayout />}
             </AuthGuard>
           }
         />
