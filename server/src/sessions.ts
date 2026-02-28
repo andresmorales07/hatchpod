@@ -239,6 +239,7 @@ async function runSession(
       cwd: session.cwd,
       permissionMode,
       model,
+      effort: session.effort,
       allowedTools,
       maxTurns: 50,
       abortSignal: session.abortController.signal,
