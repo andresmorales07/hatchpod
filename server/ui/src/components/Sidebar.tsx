@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useSessionsStore } from "@/stores/sessions";
 import { groupByDate } from "@/lib/sessions";
 import { SessionCard } from "./SessionCard";
@@ -7,7 +7,7 @@ import { WorkspaceFilter } from "./WorkspaceFilter";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Plus, Search, PanelLeftClose, PanelLeftOpen, Terminal, Settings } from "lucide-react";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -17,6 +17,7 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { sessions, activeSessionId, searchQuery, version, setActiveSession, setSearchQuery, fetchSessions, workspaceFilter } = useSessionsStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     fetchSessions();
@@ -48,6 +49,25 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         </Button>
         <Button variant="ghost" size="icon-sm" onClick={() => navigate("/new")} className="shrink-0" title="New Session">
           <Plus className="size-4" />
+        </Button>
+        <div className="flex-1" />
+        <Button
+          variant={location.pathname === "/terminal" ? "secondary" : "ghost"}
+          size="icon-sm"
+          onClick={() => navigate("/terminal")}
+          className="shrink-0"
+          title="Terminal"
+        >
+          <Terminal className="size-4" />
+        </Button>
+        <Button
+          variant={location.pathname === "/settings" ? "secondary" : "ghost"}
+          size="icon-sm"
+          onClick={() => navigate("/settings")}
+          className="shrink-0 mb-1"
+          title="Settings"
+        >
+          <Settings className="size-4" />
         </Button>
       </div>
     );
@@ -92,13 +112,32 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           <p className="px-4 py-8 text-sm text-muted-foreground text-center">No sessions yet</p>
         )}
       </ScrollArea>
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border flex flex-col gap-2">
         <Button className="w-full" size="sm" onClick={() => navigate("/new")}>
           <Plus className="size-4 mr-2" /> New Session
         </Button>
-        {version && (
-          <p className="text-[0.6875rem] text-muted-foreground text-center mt-2">v{version}</p>
-        )}
+        <div className="flex items-center gap-1">
+          <Button
+            variant={location.pathname === "/terminal" ? "secondary" : "ghost"}
+            size="icon-sm"
+            onClick={() => navigate("/terminal")}
+            title="Terminal"
+          >
+            <Terminal className="size-4" />
+          </Button>
+          <Button
+            variant={location.pathname === "/settings" ? "secondary" : "ghost"}
+            size="icon-sm"
+            onClick={() => navigate("/settings")}
+            title="Settings"
+          >
+            <Settings className="size-4" />
+          </Button>
+          <div className="flex-1" />
+          {version && (
+            <span className="text-[0.6875rem] text-muted-foreground">v{version}</span>
+          )}
+        </div>
       </div>
     </div>
   );

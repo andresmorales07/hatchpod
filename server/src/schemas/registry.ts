@@ -7,6 +7,7 @@ import { HealthResponseSchema } from "./health.js";
 import { ConfigResponseSchema, ProviderInfoSchema } from "./config.js";
 import { BrowseResponseSchema } from "./browse.js";
 import { GitDiffStatSchema } from "./git.js";
+import { SettingsSchema, PatchSettingsSchema } from "./settings.js";
 import {
   NormalizedMessageSchema,
   PaginatedMessagesSchema,
@@ -357,6 +358,53 @@ registry.registerPath({
     },
     404: {
       description: "Not a git repository",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/settings",
+  summary: "Get user settings",
+  description: "Returns current user settings. Defaults are returned if no settings file exists yet.",
+  tags: ["Settings"],
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: {
+      description: "Current settings",
+      content: { "application/json": { schema: SettingsSchema } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/api/settings",
+  summary: "Update user settings",
+  description: "Partially updates user settings. Only provided fields are changed; others retain their current values.",
+  tags: ["Settings"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    body: {
+      content: { "application/json": { schema: PatchSettingsSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated settings",
+      content: { "application/json": { schema: SettingsSchema } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: "Unauthorized",
       content: { "application/json": { schema: ErrorResponseSchema } },
     },
   },

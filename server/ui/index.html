@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -10,6 +10,9 @@
     <title>Hatchpod</title>
   </head>
   <body>
+    <!-- Apply dark theme immediately to prevent flash of light theme.
+         The settings store defaults to "dark"; this script matches that default. -->
+    <script>document.documentElement.classList.add("dark");</script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

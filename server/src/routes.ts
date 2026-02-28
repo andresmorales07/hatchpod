@@ -10,9 +10,10 @@ import {
   deleteSession,
 } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
-import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument } from "./schemas/index.js";
+import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument, PatchSettingsSchema } from "./schemas/index.js";
 import { computeGitDiffStat } from "./git-status.js";
 import { SERVER_VERSION } from "./version.js";
+import { readSettings, writeSettings } from "./settings.js";
 
 const startTime = Date.now();
 
@@ -360,6 +361,58 @@ export async function handleRequest(
         json(res, 403, { error: "permission denied" });
       } else {
         console.error("browse error:", err);
+        json(res, 500, { error: "internal server error" });
+      }
+    }
+    return;
+  }
+
+  // GET /api/settings — read user settings
+  if (pathname === "/api/settings" && method === "GET") {
+    try {
+      const settings = await readSettings();
+      json(res, 200, settings);
+    } catch (err) {
+      console.error("Failed to read settings:", err);
+      json(res, 500, { error: "internal server error" });
+    }
+    return;
+  }
+
+  // PATCH /api/settings — update user settings (partial)
+  if (pathname === "/api/settings" && method === "PATCH") {
+    let raw: unknown;
+    try {
+      const body = await readBody(req);
+      raw = JSON.parse(body);
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        json(res, 400, { error: "invalid request body" });
+        return;
+      }
+    } catch (err) {
+      const msg = err instanceof Error && err.message === "request body too large"
+        ? "request body too large"
+        : "invalid request body";
+      json(res, 400, { error: msg });
+      return;
+    }
+
+    const result = PatchSettingsSchema.safeParse(raw);
+    if (!result.success) {
+      const firstIssue = result.error.issues[0];
+      json(res, 400, { error: firstIssue.message });
+      return;
+    }
+
+    try {
+      const updated = await writeSettings(result.data);
+      json(res, 200, updated);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith("Invalid settings")) {
+        json(res, 400, { error: message });
+      } else {
+        console.error("Failed to write settings:", err);
         json(res, 500, { error: "internal server error" });
       }
     }

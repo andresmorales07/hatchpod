@@ -20,6 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bash \
         jq \
         locales \
+        make \
+        g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Generate en_US.UTF-8 locale (required by mosh and many CLI tools)

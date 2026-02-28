@@ -7,6 +7,7 @@ import { WebSocketServer } from "ws";
 import { requirePassword, getRequestIp } from "./auth.js";
 import { handleRequest } from "./routes.js";
 import { handleWsConnection, extractSessionIdFromPath } from "./ws.js";
+import { handleTerminalWsConnection } from "./terminal-ws.js";
 import { initWatcher } from "./sessions.js";
 import { getProvider } from "./providers/index.js";
 
@@ -168,7 +169,17 @@ export function createApp() {
       }
     }
 
-    // Extract session ID from path (auth happens after upgrade via first message)
+    const ip = getRequestIp(req);
+
+    // Terminal WebSocket — /api/terminal/stream
+    if (url.pathname === "/api/terminal/stream") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        handleTerminalWsConnection(ws, ip);
+      });
+      return;
+    }
+
+    // Session WebSocket — /api/sessions/:id/stream
     const sessionId = extractSessionIdFromPath(url.pathname);
     if (!sessionId) {
       socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
@@ -176,7 +187,6 @@ export function createApp() {
       return;
     }
 
-    const ip = getRequestIp(req);
     wss.handleUpgrade(req, socket, head, (ws) => {
       handleWsConnection(ws, sessionId, ip);
     });
