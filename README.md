@@ -71,9 +71,10 @@ claude                          # follow the login link that appears
 <tr><td>ttyd</td><td>Web terminal (port 7681)</td></tr>
 <tr><td>mosh</td><td>Resilient mobile shell (UDP 60000-60003)</td></tr>
 <tr><td>Tailscale</td><td>VPN access (opt-in, set <code>TS_AUTHKEY</code>)</td></tr>
-<tr><td rowspan="3">🔧 <strong>Dev Tools</strong></td><td>git</td><td>Version control</td></tr>
+<tr><td rowspan="4">🔧 <strong>Dev Tools</strong></td><td>git</td><td>Version control</td></tr>
 <tr><td>GitHub CLI (gh)</td><td>GitHub operations</td></tr>
 <tr><td>curl, jq</td><td>HTTP requests and JSON processing</td></tr>
+<tr><td>make, g++</td><td>C++ build tools for native Node.js addons (node-pty)</td></tr>
 <tr><td rowspan="2">🖥️ <strong>System</strong></td><td>s6-overlay v3</td><td>Process supervision</td></tr>
 <tr><td>sudo (passwordless)</td><td>Root access for <code>hatchpod</code> user</td></tr>
 </table>
