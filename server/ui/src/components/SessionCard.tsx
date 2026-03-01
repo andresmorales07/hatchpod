@@ -82,9 +82,6 @@ export function SessionCard({ session, isActive, onClick }: Props) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-sm font-medium truncate">{sessionDisplayName(session)}</span>
-          <Badge variant="secondary" className="text-[0.625rem] leading-none px-1.5 py-0 shrink-0">
-            {session.provider}
-          </Badge>
           {session.hasPendingApproval && (
             <Badge variant="destructive" className="text-[0.625rem] leading-none px-1.5 py-0 shrink-0">!</Badge>
           )}
