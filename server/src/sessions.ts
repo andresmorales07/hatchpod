@@ -241,7 +241,8 @@ async function runSession(
       model,
       effort: session.effort,
       allowedTools,
-      maxTurns: 50,
+      // maxTurns omitted — let the SDK use its default (no practical limit),
+      // matching the behavior of the Claude Code CLI.
       abortSignal: session.abortController.signal,
       resumeSessionId,
       onToolApproval: (request) => {

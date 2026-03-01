@@ -198,7 +198,7 @@ export class ClaudeAdapter implements ProviderAdapter {
         prompt: options.prompt,
         options: {
           abortController,
-          maxTurns: options.maxTurns ?? 50,
+          ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
           cwd: options.cwd,
           permissionMode: options.permissionMode,
           systemPrompt: { type: "preset", preset: "claude_code" },
