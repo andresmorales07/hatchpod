@@ -62,6 +62,7 @@ Two Docker volumes persist state across container restarts:
 │   ├── web-ui.spec.ts      # Web UI login/auth tests
 │   ├── ws.spec.ts          # WebSocket connection tests
 │   ├── static.spec.ts      # Static file serving tests
+│   ├── terminal.spec.ts    # Embedded terminal WebSocket tests
 │   └── session-delivery.spec.ts # Session message delivery pipeline (requires ENABLE_TEST_PROVIDER=1)
 ├── docs/plans/             # Design docs and implementation plans
 ├── server/                 # API server + web UI
@@ -73,8 +74,13 @@ Two Docker volumes persist state across container restarts:
 │   │   ├── session-history.ts # CLI session history reader
 │   │   ├── session-watcher.ts # Central message router (push/poll/idle modes → WS)
 │   │   ├── sessions.ts     # Session manager (provider-agnostic)
-│   │   ├── routes.ts       # REST route handlers (sessions, browse, history, OpenAPI docs)
-│   │   ├── ws.ts           # WebSocket handler
+│   │   ├── routes.ts       # REST route handlers (sessions, browse, history, settings, OpenAPI docs)
+│   │   ├── ws.ts           # WebSocket handler (chat sessions)
+│   │   ├── terminal.ts     # Terminal session manager (pty processes)
+│   │   ├── terminal-ws.ts  # WebSocket handler for embedded terminal
+│   │   ├── git-status.ts   # Git diff stat computation (GET /api/git/status)
+│   │   ├── settings.ts     # Persistent user settings read/write
+│   │   ├── version.ts      # SERVER_VERSION constant
 │   │   ├── types.ts        # Shared TypeScript interfaces (re-exports serializable types from schemas/)
 │   │   ├── task-extractor.ts  # Server-side task extraction from messages
 │   │   ├── schemas/        # Zod schemas — single source of truth for API types + validation
@@ -84,6 +90,8 @@ Two Docker volumes persist state across container restarts:
 │   │   │   ├── browse.ts   # BrowseResponse
 │   │   │   ├── config.ts   # ConfigResponse, ProviderInfo
 │   │   │   ├── health.ts   # HealthResponse
+│   │   │   ├── git.ts      # GitDiffStat schema
+│   │   │   ├── settings.ts # Settings schema (theme, model, effort, terminal prefs)
 │   │   │   ├── registry.ts # OpenAPI 3.1 document assembly (all paths + security)
 │   │   │   └── index.ts    # Barrel export of all schemas and inferred types
 │   │   └── providers/      # Provider abstraction layer
@@ -112,11 +120,14 @@ Two Docker volumes persist state across container restarts:
 │           │   ├── ChatPage.tsx         # Active chat session view
 │           │   ├── LoginPage.tsx        # Authentication page
 │           │   ├── NewSessionPage.tsx   # New session creation
-│           │   └── SessionListPage.tsx  # Session list/history view
+│           │   ├── SessionListPage.tsx  # Session list/history view
+│           │   ├── SettingsPage.tsx     # App settings (theme, model, terminal prefs)
+│           │   └── TerminalPage.tsx     # Embedded terminal (xterm.js over WebSocket)
 │           ├── stores/             # State management
 │           │   ├── auth.ts         # Auth state
 │           │   ├── messages.ts     # Message/WebSocket state
-│           │   └── sessions.ts     # Session list state
+│           │   ├── sessions.ts     # Session list state
+│           │   └── settings.ts     # Persisted user settings (theme, model, effort, terminal)
 │           └── components/
 │               ├── AppShell.tsx             # Layout shell (sidebar + content)
 │               ├── Composer.tsx             # Message input composer
@@ -130,6 +141,14 @@ Two Docker volumes persist state across container restarts:
 │               ├── FileDiffCard.tsx         # Syntax-highlighted file diffs for Write/Edit
 │               ├── TaskList.tsx             # Persistent task list display
 │               ├── ThinkingIndicator.tsx    # Animated thinking spinner
+│               ├── CompactingIndicator.tsx  # Context compaction animation
+│               ├── ContextUsageBadge.tsx    # Token context usage indicator
+│               ├── GitDiffBar.tsx           # Git diff stat bar (changed files count)
+│               ├── MobileNavBar.tsx         # Bottom nav bar for mobile viewports
+│               ├── ModelPicker.tsx          # Model/effort selection dropdown
+│               ├── SessionInfoSheet.tsx     # Session detail sheet (cwd, model, git status)
+│               ├── SubagentCard.tsx         # Subagent invocation display
+│               ├── ToolSummaryCard.tsx      # Compact tool call summary card
 │               ├── WorkspaceFilter.tsx      # Workspace filter dropdown
 │               └── ui/                      # shadcn/ui primitives
 │                   ├── badge.tsx
@@ -139,7 +158,7 @@ Two Docker volumes persist state across container restarts:
 │                   ├── input.tsx
 │                   ├── scroll-area.tsx
 │                   └── tooltip.tsx
-├── server/tests/               # Vitest unit tests (24 test files + helpers.ts)
+├── server/tests/               # Vitest unit tests (37 test files + helpers.ts)
 └── rootfs/                 # Files copied into the container at /
     └── etc/
         ├── ssh/sshd_config
@@ -286,7 +305,7 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 
 ### Automated tests (Playwright)
 
-Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket connections, static file serving, and session message delivery. The config (`playwright.config.ts`) defines eight test projects:
+Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket connections, static file serving, session message delivery, and the embedded terminal. The config (`playwright.config.ts`) defines nine test projects:
 
 - `ttyd-chromium` → `http://localhost:7681` (basic-auth)
 - `ttyd-firefox` → `http://localhost:7681` (basic-auth)
@@ -295,6 +314,7 @@ Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket c
 - `web-ui-firefox` → `http://localhost:8080` (browser)
 - `ws` → `http://localhost:8080` (WebSocket)
 - `static` → `http://localhost:8080` (static files)
+- `terminal` → `http://localhost:8080` (embedded terminal WebSocket)
 - `session-delivery` → `http://localhost:8080` (test provider, requires `ENABLE_TEST_PROVIDER=1`)
 
 Ports are configurable via `TTYD_PORT` and `API_PORT` env vars (default to 7681/8080). When running tests inside hatchpod itself, use offset ports to avoid conflicts with the host services (e.g., `TTYD_PORT=17681 API_PORT=18080`).
@@ -332,6 +352,7 @@ docker rm -f hatchpod-test
 - **`tests/web-ui.spec.ts`** — Web UI: login page rendering, authentication flow
 - **`tests/ws.spec.ts`** — WebSocket: connection lifecycle, message exchange
 - **`tests/static.spec.ts`** — Static file serving: index.html, assets, SPA fallback
+- **`tests/terminal.spec.ts`** — Embedded terminal: WebSocket connection, pty I/O, session lifecycle
 - **`tests/session-delivery.spec.ts`** — Session message delivery pipeline: push-mode flow, lifecycle transitions, follow-up messages, reconnect replay, multi-client broadcast, session ID remap, interrupt, tool approval, thinking deltas, slash commands. Requires `ENABLE_TEST_PROVIDER=1`
 
 ### Manual verification

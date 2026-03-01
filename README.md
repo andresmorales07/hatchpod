@@ -17,6 +17,42 @@ Run Claude Code on a server, VPS, or homelab — then connect via **SSH**, **web
 
 Think of it as your personal cloud dev machine with Claude Code built in.
 
+## Web UI
+
+A mobile-friendly web interface for Claude Code — start sessions, chat with Claude, browse files, and run shell commands, all from any browser.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/session-list.png" alt="Session list" width="100%"></td>
+<td><img src="docs/screenshots/chat-messages.png" alt="Chat view" width="100%"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/new-session.png" alt="New session" width="100%"></td>
+<td><img src="docs/screenshots/chat-view.png" alt="Tool calls" width="100%"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/terminal.png" alt="Embedded terminal" width="100%"></td>
+<td><img src="docs/screenshots/settings.png" alt="Settings" width="100%"></td>
+</tr>
+</table>
+
+**Highlights:**
+
+- **Session history** — all past Claude sessions are listed in the sidebar, grouped by date, searchable by prompt. Pick up any conversation where you left off.
+- **Rich message rendering** — responses use full Markdown with syntax-highlighted code blocks, bold/italic, numbered lists, and inline code.
+- **Tool call cards** — every `Bash`, `Read`, `Edit`, `Write`, and other tool call is shown as a collapsible card with the command and output. Groups of consecutive calls from the same tool are collapsed into a single summary.
+- **Syntax-highlighted diffs** — `Write` and `Edit` tool results render as side-by-side file diffs with language-aware highlighting.
+- **Subagent cards** — when Claude spawns a subagent, the nested session appears inline as a collapsible card.
+- **Live thinking indicator** — animated spinner shows extended thinking in progress; reasoning text streams in real time.
+- **Embedded terminal** — full xterm.js terminal in the browser, connected to a real PTY inside the container via WebSocket. No SSH client needed.
+- **Slash commands** — type `/` in the composer for autocomplete of common Claude Code slash commands.
+- **Tool approval UI** — when Claude requests a permission (e.g. running a command), an inline approval card appears with Accept/Reject buttons. No need to watch the terminal.
+- **Git status bar** — the bottom of each chat shows the current branch and number of changed files.
+- **Model & effort picker** — switch between Haiku, Sonnet, and Opus per-session, or set a default in Settings. Effort level (Low → Max) is configurable; Max is Opus-only.
+- **Dark/light theme** — toggle in Settings; preference is persisted locally.
+- **Mobile-friendly** — responsive layout with a bottom nav bar and swipe gestures on small screens.
+- **Interactive API docs** — `/api/docs` serves a Scalar UI with the full OpenAPI 3.1 spec. Try endpoints directly in the browser.
+
 ## Why Hatchpod?
 
 Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/claude-code/)) that spin up for a single task and disappear, Hatchpod is a **long-lived workstation**.
@@ -123,7 +159,7 @@ curl -X POST -H "Authorization: Bearer $API_PASSWORD" \
 curl http://localhost:8080/api/openapi.json
 ```
 
-API endpoints: `GET /healthz`, `GET /api/openapi.json`, `GET /api/docs`, `POST /api/sessions`, `GET /api/sessions`, `GET /api/sessions/:id`, `DELETE /api/sessions/:id`, `GET /api/sessions/:id/history`, `GET /api/sessions/:id/messages`, `GET /api/browse`, `GET /api/config`, `GET /api/providers`. WebSocket streaming at `WS /api/sessions/:id/stream`.
+API endpoints: `GET /healthz`, `GET /api/openapi.json`, `GET /api/docs`, `POST /api/sessions`, `GET /api/sessions`, `GET /api/sessions/:id`, `DELETE /api/sessions/:id`, `GET /api/sessions/:id/history`, `GET /api/sessions/:id/messages`, `GET /api/browse`, `GET /api/config`, `GET /api/providers`, `GET /api/git/status`, `GET /api/settings`, `PATCH /api/settings`. Chat streaming at `WS /api/sessions/:id/stream`; embedded terminal at `WS /api/terminal/stream`.
 
 ### Mosh (UDP 60000-60003)
 
