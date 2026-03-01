@@ -170,4 +170,128 @@ describe("ClaudeAdapter context usage reporting", () => {
     expect(assistantLiveCall.inputTokens).toBe(5505); // 5 + 1000 + 4500
     expect(assistantLiveCall.contextWindow).toBe(200000);
   });
+
+  it("uses per-call tokens not cumulative modelUsage in multi-call agentic turns", async () => {
+    // In an agentic turn with multiple tool-use iterations, each API call includes
+    // the full conversation. modelUsage.inputTokens sums across ALL calls (cumulative),
+    // which overstates context usage. The fix uses the last assistant message's per-call
+    // usage instead.
+    const usageCalls: Array<{ inputTokens: number; contextWindow: number }> = [];
+
+    mockQuery.mockReturnValue(
+      createMockHandle([
+        // Agentic turn: 3 API calls with growing context
+        {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Let me search." }],
+            usage: { input_tokens: 10000, output_tokens: 500 },
+          },
+        },
+        // (tool result would go here in real flow)
+        {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Found it, reading file." }],
+            usage: { input_tokens: 18000, output_tokens: 300 },
+          },
+        },
+        // (tool result would go here)
+        {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Here's the answer." }],
+            usage: { input_tokens: 25000, output_tokens: 200 },
+          },
+        },
+        {
+          type: "result",
+          total_cost_usd: 0.05,
+          num_turns: 1,
+          session_id: "test-session",
+          modelUsage: {
+            "claude-opus-4-6": {
+              // Cumulative: 10000 + 18000 + 25000 = 53000 (NOT the current context size!)
+              inputTokens: 53000,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+              outputTokens: 1000,
+              contextWindow: 200000,
+              maxOutputTokens: 32000,
+              webSearchRequests: 0,
+              costUSD: 0.05,
+            },
+          },
+        },
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter();
+    await drainAdapter(adapter, makeOptions({
+      onContextUsage: (usage) => usageCalls.push(usage),
+    }));
+
+    // Only 1 call: from result (turn 1, no cachedContextWindow for mid-turn updates)
+    expect(usageCalls).toHaveLength(1);
+
+    // Must use the last assistant's per-call tokens (25000), NOT the cumulative 53000
+    expect(usageCalls[0].inputTokens).toBe(25000);
+    expect(usageCalls[0].contextWindow).toBe(200000);
+  });
+
+  it("excludes sidechain (subagent) assistant messages from context tracking", async () => {
+    // Sidechain messages have parent_tool_use_id set — they represent a subagent's
+    // context, not the parent session's. They must not pollute lastCallInputTokens.
+    const usageCalls: Array<{ inputTokens: number; contextWindow: number }> = [];
+
+    mockQuery.mockReturnValue(
+      createMockHandle([
+        // Parent assistant message
+        {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Let me delegate." }],
+            usage: { input_tokens: 15000, output_tokens: 100 },
+          },
+        },
+        // Sidechain assistant message (subagent) — should be ignored for context tracking
+        {
+          type: "assistant",
+          parent_tool_use_id: "tool-abc-123",
+          message: {
+            content: [{ type: "text", text: "Subagent working." }],
+            usage: { input_tokens: 5000, output_tokens: 50 },
+          },
+        },
+        {
+          type: "result",
+          total_cost_usd: 0.03,
+          num_turns: 1,
+          session_id: "test-session",
+          modelUsage: {
+            "claude-opus-4-6": {
+              inputTokens: 20000,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+              outputTokens: 150,
+              contextWindow: 200000,
+              maxOutputTokens: 32000,
+              webSearchRequests: 0,
+              costUSD: 0.03,
+            },
+          },
+        },
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter();
+    await drainAdapter(adapter, makeOptions({
+      onContextUsage: (usage) => usageCalls.push(usage),
+    }));
+
+    expect(usageCalls).toHaveLength(1);
+    // Must use parent's 15000, not the sidechain's 5000
+    expect(usageCalls[0].inputTokens).toBe(15000);
+    expect(usageCalls[0].contextWindow).toBe(200000);
+  });
 });

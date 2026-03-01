@@ -191,6 +191,7 @@ export class ClaudeAdapter implements ProviderAdapter {
     let numTurns = 0;
     let accumulatedThinking = "";
     let cachedContextWindow = 0;
+    let lastCallInputTokens = 0;
     const taskIdToToolUseId = new Map<string, string>();
 
     try {
@@ -461,14 +462,20 @@ export class ClaudeAdapter implements ProviderAdapter {
           if (resultMsg.session_id) {
             providerSessionId = resultMsg.session_id;
           }
-          // Extract context window size and input tokens from modelUsage
+          // Extract context window size from modelUsage.
+          // For input tokens, prefer the per-API-call count from the latest assistant
+          // message (lastCallInputTokens) — it represents the actual current context size.
+          // modelUsage.inputTokens is cumulative across ALL API calls in the turn, which
+          // over-reports in agentic turns with multiple tool-use loop iterations.
           if (resultMsg.modelUsage) {
             for (const usage of Object.values(resultMsg.modelUsage)) {
               if (usage.contextWindow > 0) {
                 cachedContextWindow = usage.contextWindow;
+                const inputTokens = lastCallInputTokens > 0
+                  ? lastCallInputTokens
+                  : usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
                 try {
-                  const totalInputTokens = usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
-                  options.onContextUsage?.({ inputTokens: totalInputTokens, contextWindow: usage.contextWindow });
+                  options.onContextUsage?.({ inputTokens, contextWindow: usage.contextWindow });
                 } catch (err) {
                   console.error("claude-adapter: onContextUsage callback failed:", err);
                 }
@@ -478,12 +485,13 @@ export class ClaudeAdapter implements ProviderAdapter {
           }
         }
 
-        // Extract per-turn context usage from assistant messages.
-        // cachedContextWindow is populated from the result message, which arrives AFTER all
-        // assistant messages in the SDK stream. On turn 1 (fresh session), this guard is always
-        // false and no callback fires. On turn 2+ (resumed session), cachedContextWindow is set
-        // from the previous turn's result, so mid-session assistant messages provide live updates.
-        if (sdkMessage.type === "assistant" && cachedContextWindow > 0) {
+        // Track per-API-call input tokens from non-sidechain assistant messages.
+        // Each assistant message carries usage for its specific API call, which equals the
+        // actual conversation context size at that point. We always record this so the result
+        // handler can use it instead of the cumulative modelUsage.inputTokens.
+        // On turn 2+, also emit onContextUsage immediately for live mid-turn updates.
+        // Sidechain messages (subagent) are excluded — they have their own context.
+        if (sdkMessage.type === "assistant" && parentToolUseId == null) {
           const assistantMsg = sdkMessage as SDKAssistantMessage;
           const rawUsage = (assistantMsg.message as {
             usage?: {
@@ -497,10 +505,13 @@ export class ClaudeAdapter implements ProviderAdapter {
             (rawUsage?.cache_read_input_tokens ?? 0) +
             (rawUsage?.cache_creation_input_tokens ?? 0);
           if (totalInputTokens > 0) {
-            try {
-              options.onContextUsage?.({ inputTokens: totalInputTokens, contextWindow: cachedContextWindow });
-            } catch (err) {
-              console.error("claude-adapter: onContextUsage callback failed:", err);
+            lastCallInputTokens = totalInputTokens;
+            if (cachedContextWindow > 0) {
+              try {
+                options.onContextUsage?.({ inputTokens: totalInputTokens, contextWindow: cachedContextWindow });
+              } catch (err) {
+                console.error("claude-adapter: onContextUsage callback failed:", err);
+              }
             }
           }
         }
