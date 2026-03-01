@@ -1,4 +1,4 @@
-import type { NormalizedMessage, PermissionModeCommon, SlashCommand, ToolSummary, ApprovalDecision } from "./providers/types.js";
+import type { NormalizedMessage, PermissionModeCommon, SlashCommand, ToolSummary, ApprovalDecision, ProviderQueryHandle } from "./providers/types.js";
 
 // ── Serializable types — re-exported from Zod schemas ──
 
@@ -27,8 +27,8 @@ export interface ActiveSession {
   alwaysAllowedTools: Set<string>;
   status: SessionStatus;
   lastError: string | null;
-  /** Live SDK query handle, present while the session process is running. Used for streaming follow-up input. */
-  queryHandle?: import("@anthropic-ai/claude-agent-sdk").Query;
+  /** Live query handle, present while the session process is running. Used for streaming follow-up input. */
+  queryHandle?: ProviderQueryHandle;
 }
 
 export interface PendingApproval {

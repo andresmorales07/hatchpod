@@ -363,16 +363,13 @@ async function runSession(
     // which for-await discards.
     let result: IteratorResult<NormalizedMessage, ProviderSessionResult>;
     while (!(result = await generator.next()).done) {
-      // Intercept system_init messages — broadcast slash commands separately.
+      // Intercept system_init messages — broadcast slash commands separately, not stored.
       if (result.value.role === "system" && "event" in result.value && result.value.event.type === "system_init") {
         watcher.pushEvent(session.sessionId, { type: "slash_commands", commands: result.value.event.slashCommands });
         continue;
       }
-      // Store + broadcast each SDK message via the watcher.
-      watcher.pushMessage(session.sessionId, result.value);
-
-      // Mark idle between streaming turns — session_result ends each turn but the
-      // generator stays alive waiting for the next streamInput() call (Feature 4).
+      // Intercept session_result mid-stream — marks idle between turns when streaming input is active.
+      // The generator stays alive waiting for the next streamInput() call; not stored (like system_init).
       if (
         session.queryHandle &&
         result.value.role === "system" &&
@@ -381,7 +378,10 @@ async function runSession(
       ) {
         session.status = "idle";
         watcher.pushEvent(session.sessionId, { type: "status", status: "idle" });
+        continue;
       }
+      // Store + broadcast each SDK message via the watcher.
+      watcher.pushMessage(session.sessionId, result.value);
 
       // Trigger async git diff after tool results (file changes may have occurred)
       if (result.value.role === "user" && result.value.parts.some((p) => p.type === "tool_result")) {
@@ -547,12 +547,12 @@ export function handleApproval(
 }
 
 /** Yields a single user message in the format the SDK's streamInput() expects. */
-async function* streamUserMessage(text: string) {
+async function* streamUserMessage(sessionId: string, text: string) {
   yield {
     type: "user" as const,
     message: { role: "user" as const, content: text },
     parent_tool_use_id: null,
-    session_id: null,
+    session_id: sessionId,
   };
 }
 
@@ -560,7 +560,7 @@ export async function sendFollowUp(
   session: ActiveSession,
   text: string,
 ): Promise<boolean> {
-  if (session.status === "running" || session.status === "starting") {
+  if (session.status === "running" || session.status === "starting" || session.status === "waiting_for_approval") {
     return false;
   }
 
@@ -576,7 +576,7 @@ export async function sendFollowUp(
       index: 0, // overwritten by pushMessage()
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await session.queryHandle.streamInput(streamUserMessage(text) as any);
+    await session.queryHandle.streamInput(streamUserMessage(session.sessionId, text) as any);
     return true;
   }
 

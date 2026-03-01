@@ -46,6 +46,13 @@ export type ApprovalDecision =
   | { allow: true; updatedInput?: Record<string, unknown>; alwaysAllow?: boolean }
   | { allow: false; message?: string };
 
+/** Opaque handle for controlling a live provider session. Defined here (not in the SDK) to keep SDK types isolated to claude-adapter.ts. */
+export interface ProviderQueryHandle {
+  streamInput(messages: AsyncIterable<unknown>): Promise<void>;
+  close(): void;
+  interrupt?(): void;
+}
+
 export interface ProviderSessionOptions {
   prompt: string;
   cwd: string;
@@ -67,7 +74,7 @@ export interface ProviderSessionOptions {
   onModeChanged?: (newMode: PermissionModeCommon) => void;
   onSessionIdResolved?: (sessionId: string) => void;
   /** Called immediately after the SDK query handle is created. Used to store a live reference for streaming input. */
-  onQueryCreated?: (query: import("@anthropic-ai/claude-agent-sdk").Query) => void;
+  onQueryCreated?: (handle: ProviderQueryHandle) => void;
 }
 
 export interface ProviderSessionResult {

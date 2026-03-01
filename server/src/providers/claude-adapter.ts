@@ -706,6 +706,15 @@ export class ClaudeAdapter implements ProviderAdapter {
       return { role: "system", event: { type: "compact_boundary", trigger, preTokens }, index };
     }
 
+    // Handle tool_use_summary lines from JSONL (yielded during live sessions; must survive history replay)
+    if (type === "tool_use_summary") {
+      const summary = typeof parsed.summary === "string" ? parsed.summary : "";
+      const precedingToolUseIds = Array.isArray(parsed.preceding_tool_use_ids)
+        ? (parsed.preceding_tool_use_ids as unknown[]).filter((id): id is string => typeof id === "string")
+        : [];
+      return { role: "tool_summary", summary, precedingToolUseIds, index };
+    }
+
     if (type !== "user" && type !== "assistant") return null;
 
     // Skip system-injected user messages (skill content, system context, etc.)
@@ -748,7 +757,7 @@ export async function preloadSupportedModels(): Promise<void> {
       id: String(m.id ?? m),
       name: typeof m.name === "string" ? m.name : undefined,
     }));
-    queryHandle.close?.();
+    queryHandle.close();
   } catch (err) {
     console.warn("preloadSupportedModels: failed —", err);
   }
