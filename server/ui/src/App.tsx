@@ -13,6 +13,7 @@ import { NewSessionPage } from "@/pages/NewSessionPage";
 import { TerminalPage } from "@/pages/TerminalPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { MobileNavBar } from "@/components/MobileNavBar";
+import { Toaster } from "sonner";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const authenticated = useAuthStore((s) => s.authenticated);
@@ -88,6 +89,13 @@ export function App() {
           }
         />
       </Routes>
+      <Toaster
+        position="top-right"
+        theme="dark"
+        toastOptions={{
+          className: "bg-card text-card-foreground border-border",
+        }}
+      />
     </TooltipProvider>
   );
 }
