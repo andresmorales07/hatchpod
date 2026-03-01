@@ -747,7 +747,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
 // ── Dynamic model list (Feature 2) ──
 
-let cachedModels: Array<{ id: string; name?: string }> | null = null;
+let cachedModels: Array<{ id: string; name?: string; description?: string }> | null = null;
 
 /** Probe the SDK at startup to get the list of available models. Fire-and-forget. */
 export async function preloadSupportedModels(): Promise<void> {
@@ -761,16 +761,32 @@ export async function preloadSupportedModels(): Promise<void> {
       },
     });
     const raw = await queryHandle.supportedModels();
-    cachedModels = raw.map((m) => ({
-      id: m.value,
-      name: m.displayName,
-    }));
+
+    // Determine which model family "default" maps to by finding which family
+    // has a [1m] variant but no plain alias (e.g. "opus[1m]" exists but no "opus").
+    const ids = new Set(raw.map((m) => m.value));
+    const families = ["opus", "sonnet", "haiku"];
+    const defaultFamily = families.find((f) => ids.has(`${f}[1m]`) && !ids.has(f));
+
+    cachedModels = raw.map((m) => {
+      let name = m.displayName;
+      // Annotate "default" with the resolved model family so users know what they're selecting
+      if (m.value === "default" && defaultFamily) {
+        const label = defaultFamily.charAt(0).toUpperCase() + defaultFamily.slice(1);
+        name = `${label} (Default)`;
+      }
+      return {
+        id: m.value,
+        name,
+        ...(m.description ? { description: m.description } : {}),
+      };
+    });
     queryHandle.close();
   } catch (err) {
     console.warn("preloadSupportedModels: failed —", err);
   }
 }
 
-export function getCachedModels(): Array<{ id: string; name?: string }> | null {
+export function getCachedModels(): Array<{ id: string; name?: string; description?: string }> | null {
   return cachedModels;
 }

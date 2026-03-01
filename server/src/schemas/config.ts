@@ -7,7 +7,7 @@ export const ConfigResponseSchema = z
     defaultCwd: z.string().openapi({ description: "Default working directory for new sessions" }),
     version: z.string().openapi({ description: "Server version (SemVer)" }),
     supportedModels: z
-      .array(z.object({ id: z.string(), name: z.string().optional() }))
+      .array(z.object({ id: z.string(), name: z.string().optional(), description: z.string().optional() }))
       .nullable()
       .openapi({ description: "Available models probed at startup, or null if not yet loaded" }),
   })

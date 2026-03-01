@@ -23,7 +23,7 @@ interface SessionsState {
   cwd: string;
   browseRoot: string;
   version: string;
-  supportedModels: Array<{ id: string; name?: string }> | null;
+  supportedModels: Array<{ id: string; name?: string; description?: string }> | null;
   searchQuery: string;
   lastError: string | null;
   workspaceFilter: string | null;
