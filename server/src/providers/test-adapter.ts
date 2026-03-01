@@ -462,6 +462,28 @@ export class TestAdapter implements ProviderAdapter {
         break;
       }
 
+      case "rate-limit": {
+        // Simulate a rate limit event followed by a response
+        checkAbort(abortSignal);
+        try {
+          options.onRateLimit?.({
+            status: "allowed_warning",
+            rateLimitType: "five_hour",
+            utilization: 0.82,
+            resetsAt: Math.floor(Date.now() / 1000) + 3600,
+          });
+        } catch (err) {
+          console.error("test-adapter: onRateLimit callback failed:", err);
+        }
+
+        yield {
+          role: "assistant",
+          parts: [{ type: "text", text: `Echo: ${cleanPrompt}` }],
+          index: index++,
+        };
+        break;
+      }
+
       default: {
         // Echo scenario (default)
         checkAbort(abortSignal);
