@@ -3,3 +3,6 @@
 
 # npm global packages (set via: npm config -g set prefix ~/.npm-global)
 export PATH="/home/hatchpod/.npm-global/bin:$PATH"
+
+# .NET global tools (dotnet tool install -g)
+export PATH="$PATH:/home/hatchpod/.dotnet/tools"

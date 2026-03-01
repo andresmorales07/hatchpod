@@ -48,8 +48,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest@sha256:4cac394b6b72846f8a85a7a0e577c6d61
 COPY --from=ghcr.io/astral-sh/uv:latest@sha256:4cac394b6b72846f8a85a7a0e577c6d61d4e17fe2ccee65d9451a8b3c9efb4ac /uvx /usr/local/bin/uvx
 
 # Install .NET SDKs (optional — set DOTNET_CHANNELS="8.0 9.0 10.0" to include, empty to skip)
+# libicu72 is required at runtime by the dotnet CLI (ICU globalization support)
 RUN if [ -n "${DOTNET_CHANNELS}" ]; then \
-      curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+      apt-get update \
+      && apt-get install -y --no-install-recommends libicu72 \
+      && rm -rf /var/lib/apt/lists/* \
+      && curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
       && for channel in ${DOTNET_CHANNELS}; do \
            bash /tmp/dotnet-install.sh --channel "$channel" --install-dir /usr/share/dotnet; \
          done \
@@ -116,9 +120,16 @@ RUN useradd -m -s /bin/bash -u 1000 hatchpod \
 RUN npm config -g set prefix /home/hatchpod/.npm-global
 ENV PATH="/home/hatchpod/.npm-global/bin:${PATH}"
 
+# Install TypeScript language server for LSP support
+RUN npm install -g typescript-language-server typescript
+
 # Install Claude Code via native installer as hatchpod user
 USER hatchpod
 RUN curl -fsSL https://claude.ai/install.sh | bash
+# Install csharp-ls language server for C# LSP support (only when dotnet is present)
+RUN if [ -x /usr/local/bin/dotnet ]; then \
+      dotnet tool install -g csharp-ls; \
+    fi
 USER root
 RUN ln -sf /home/hatchpod/.local/bin/claude /usr/local/bin/claude
 
