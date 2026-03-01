@@ -103,8 +103,7 @@ claude                          # follow the login link that appears
 <tr><td rowspan="2">📦 <strong>Package Mgrs</strong></td><td>npm</td><td>Node packages (global prefix persisted)</td></tr>
 <tr><td>uv / uvx</td><td>Python packages and tool runner</td></tr>
 <tr><td>🐳 <strong>Containers</strong></td><td>Docker Engine + Compose</td><td>Docker-in-Docker (requires Sysbox on host)</td></tr>
-<tr><td rowspan="4">🌐 <strong>Access</strong></td><td>OpenSSH server</td><td>Remote access (port 2222)</td></tr>
-<tr><td>ttyd</td><td>Web terminal (port 7681)</td></tr>
+<tr><td rowspan="3">🌐 <strong>Access</strong></td><td>OpenSSH server</td><td>Remote access (port 2222)</td></tr>
 <tr><td>mosh</td><td>Resilient mobile shell (UDP 60000-60003)</td></tr>
 <tr><td>Tailscale</td><td>VPN access (opt-in, set <code>TS_AUTHKEY</code>)</td></tr>
 <tr><td rowspan="4">🔧 <strong>Dev Tools</strong></td><td>git</td><td>Version control</td></tr>
@@ -130,10 +129,6 @@ Use your `SSH_PASSWORD` to authenticate, or add your public key:
 ```bash
 ssh-copy-id -p 2222 hatchpod@localhost
 ```
-
-### Web Terminal (port 7681)
-
-Open `http://localhost:7681` in your browser. Authenticate with `TTYD_USERNAME` / `TTYD_PASSWORD` from your `.env`.
 
 ### Web UI + API (port 8080)
 
@@ -195,8 +190,6 @@ Connect from anywhere without exposing ports publicly. Set `TS_AUTHKEY` in your 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SSH_PASSWORD` | SSH password for `hatchpod` user | `changeme` |
-| `TTYD_USERNAME` | Web terminal username | `hatchpod` |
-| `TTYD_PASSWORD` | Web terminal password | `changeme` |
 | `API_PASSWORD` | API server + Web UI password | `changeme` |
 | `TS_AUTHKEY` | Tailscale auth key (enables VPN) | _(disabled)_ |
 | `TS_HOSTNAME` | Tailscale node name | `hatchpod` |
@@ -255,12 +248,12 @@ The `docker-data` volume persists pulled images and build cache across container
 ┌──────────────────────────────────────────────────────────┐
 │            hatchpod container (sysbox-runc)               │
 │                                                          │
-│  ┌────────┐ ┌─────────┐ ┌───────┐ ┌──────┐ ┌──────────┐ │
-│  │  api   │ │  sshd   │ │ ttyd  │ │dockerd│ │tailscaled│ │
-│  │ :8080  │ │  :2222  │ │ :7681 │ │ DinD  │ │(opt-in)  │ │
-│  └────┬───┘ └────┬────┘ └───┬───┘ └───┬──┘ └────┬─────┘ │
-│       │          │          │         │          │       │
-│  ┌────┴──────────┴──────────┴─────────┴──────────┘       │
+│  ┌────────┐  ┌─────────┐  ┌──────┐  ┌──────────┐        │
+│  │  api   │  │  sshd   │  │dockerd│  │tailscaled│        │
+│  │ :8080  │  │  :2222  │  │ DinD  │  │(opt-in)  │        │
+│  └────┬───┘  └────┬────┘  └───┬──┘  └────┬─────┘        │
+│       │           │           │           │              │
+│  ┌────┴───────────┴───────────┴───────────┘              │
 │  │  Provider Abstraction Layer (NormalizedMessage)        │
 │  │  └─ ClaudeAdapter → Claude Code CLI                   │
 │  └───────────────────────────────────────────────────────┘│
@@ -272,7 +265,7 @@ The `docker-data` volume persists pulled images and build cache across container
 └──────────────────────────────────────────────────────────┘
 ```
 
-Process supervision by [s6-overlay](https://github.com/just-containers/s6-overlay). Web terminal by [ttyd](https://github.com/tsl0922/ttyd).
+Process supervision by [s6-overlay](https://github.com/just-containers/s6-overlay).
 
 ## Make Targets
 
@@ -334,6 +327,6 @@ docker run --rm -v hatchpod_home:/data -v $(pwd):/backup alpine \
 
 <div align="center">
 
-<sub>Built with <a href="https://github.com/just-containers/s6-overlay">s6-overlay</a> · <a href="https://github.com/tsl0922/ttyd">ttyd</a> · <a href="https://github.com/nestybox/sysbox">Sysbox</a></sub>
+<sub>Built with <a href="https://github.com/just-containers/s6-overlay">s6-overlay</a> · <a href="https://github.com/nestybox/sysbox">Sysbox</a></sub>
 
 </div>

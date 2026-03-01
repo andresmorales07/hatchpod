@@ -2,7 +2,6 @@
 FROM debian:bookworm-slim@sha256:98f4b71de414932439ac6ac690d7060df1f27161073c5036a7553723881bffbe
 
 ARG S6_OVERLAY_VERSION=3.2.0.2
-ARG TTYD_VERSION=1.7.7
 ARG RUNC_VERSION=1.1.15
 ARG DOTNET_CHANNELS=""
 ARG TARGETARCH
@@ -106,10 +105,6 @@ RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
     && tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz \
     && rm /tmp/s6-overlay-*.tar.xz
 
-# Install ttyd
-ADD https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64 /usr/local/bin/ttyd
-RUN chmod +x /usr/local/bin/ttyd
-
 # Create non-root user
 RUN useradd -m -s /bin/bash -u 1000 hatchpod \
     && echo "hatchpod ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/hatchpod \
@@ -161,7 +156,6 @@ WORKDIR /
 RUN chmod +x /etc/s6-overlay/scripts/init.sh \
     && chmod +x /etc/s6-overlay/scripts/tailscaled-up.sh \
     && chmod +x /etc/s6-overlay/s6-rc.d/sshd/run \
-    && chmod +x /etc/s6-overlay/s6-rc.d/ttyd/run \
     && chmod +x /etc/s6-overlay/s6-rc.d/dockerd/run \
     && chmod +x /etc/s6-overlay/s6-rc.d/tailscaled/run \
     && chmod +x /etc/s6-overlay/s6-rc.d/api/run
@@ -171,6 +165,6 @@ ENV S6_KEEP_ENV=1
 ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
 ENV CLAUDE_CONFIG_DIR=/home/hatchpod/.claude
 
-EXPOSE 2222 7681 8080 60000-60003/udp
+EXPOSE 2222 8080 60000-60003/udp
 
 ENTRYPOINT ["/init"]

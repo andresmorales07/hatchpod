@@ -62,7 +62,7 @@ if ! shopt -oq posix; then
   fi
 fi
 
-# Start in workspace directory for login shells (matches ttyd and web UI)
+# Start in workspace directory for login shells (matches web UI terminal)
 if shopt -q login_shell && [ "$PWD" = "$HOME" ]; then
     cd ~/workspace 2>/dev/null || true
 fi

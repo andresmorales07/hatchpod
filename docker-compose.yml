@@ -10,7 +10,6 @@ services:
       - "/dev/net/tun:/dev/net/tun"
     ports:
       - "2222:2222"
-      - "7681:7681"
       - "8080:8080"
       - "60000-60003:60000-60003/udp"
     volumes:
@@ -18,8 +17,6 @@ services:
       - docker-data:/var/lib/docker
     environment:
       - SSH_PASSWORD=${SSH_PASSWORD:-${CLAUDE_USER_PASSWORD:-changeme}}
-      - TTYD_USERNAME=${TTYD_USERNAME:-hatchpod}
-      - TTYD_PASSWORD=${TTYD_PASSWORD:-changeme}
       - TS_AUTHKEY=${TS_AUTHKEY:-}
       - TS_HOSTNAME=${TS_HOSTNAME:-hatchpod}
       - DOTFILES_REPO=${DOTFILES_REPO:-}
@@ -27,7 +24,7 @@ services:
       - DOTFILES_BRANCH=${DOTFILES_BRANCH:-}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f -u \"${TTYD_USERNAME}:${TTYD_PASSWORD}\" http://localhost:7681 && curl -f http://localhost:8080/healthz && docker info > /dev/null 2>&1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/healthz && docker info > /dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 3

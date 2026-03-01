@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hatchpod is a Dockerized Claude Code environment with multi-machine access via SSH (port 2222) and a web terminal (port 7681, ttyd). It uses s6-overlay for process supervision and supports Docker-in-Docker via Sysbox runtime for secure container builds inside the sandbox.
+Hatchpod is a Dockerized Claude Code environment with multi-machine access via SSH (port 2222) and a web UI (port 8080). It uses s6-overlay for process supervision and supports Docker-in-Docker via Sysbox runtime for secure container builds inside the sandbox.
 
 **North Star: self-hosted Claude Code.** Hatchpod's purpose is specifically to run Claude Code in a containerized, remotely accessible environment — not to be a generic multi-provider coding agent host. The `ProviderAdapter` abstraction exists for testability (enabling `TestAdapter` and the `session-delivery` test suite), not to support other providers. Do not suggest adding opencode, Codex, or other provider adapters as a feature direction.
 
@@ -13,16 +13,14 @@ The container is built on Debian bookworm-slim and layers in three main subsyste
 1. **Process supervision (s6-overlay v3)** — the container entrypoint is `/init`, which boots the s6 service tree. Services are declared under `rootfs/etc/s6-overlay/s6-rc.d/`:
    - `init` (oneshot) — generates SSH host keys, sets the `hatchpod` user password, fixes volume ownership.
    - `sshd` (longrun) — OpenSSH daemon on port 2222.
-   - `ttyd` (longrun) — web terminal on port 7681 (basic-auth via `TTYD_USERNAME`/`TTYD_PASSWORD`).
    - `dockerd` (longrun) — Docker daemon for DinD (requires Sysbox runtime on host).
    - `api` (longrun) — REST + WebSocket API server on port 8080, serves React web UI. Uses a provider abstraction layer (`server/src/providers/`) so the SDK is isolated behind a `ProviderAdapter` interface — only `claude-adapter.ts` imports from `@anthropic-ai/claude-agent-sdk`.
    - `user` (bundle) — depends on all of the above; ensures correct startup order.
 
 2. **Claude Code** — installed via the native installer (`curl -fsSL https://claude.ai/install.sh | bash`) as the `hatchpod` user, with a symlink at `/usr/local/bin/claude`. Users authenticate interactively via `claude` (login link flow); credentials persist in the `home` volume. Node.js 20 LTS is included for MCP server support. Python 3, uv, and uvx are included for Python-based MCP servers.
 
-3. **Networking** — four exposed ports:
+3. **Networking** — three exposed ports:
    - `2222` — SSH access (`ssh -p 2222 hatchpod@<host>`)
-   - `7681` — ttyd web terminal (`http://<host>:7681`)
    - `8080` — API server + web UI (`http://<host>:8080`)
    - `60000-60003/udp` — mosh (Mobile Shell) for resilient remote access
 
@@ -35,10 +33,10 @@ Two Docker volumes persist state across container restarts:
 ## Project Structure
 
 ```
-├── Dockerfile              # Debian bookworm-slim, Node.js 20, Docker Engine, s6-overlay, ttyd, Claude Code
+├── Dockerfile              # Debian bookworm-slim, Node.js 20, Docker Engine, s6-overlay, Claude Code
 ├── docker-compose.yml      # Service definition (pulls from GHCR), volumes, env vars
 ├── Makefile                # build, up, down, logs, shell, ssh, clean
-├── .env.example            # Template for SSH, ttyd, and API passwords
+├── .env.example            # Template for SSH and API passwords
 ├── LICENSE
 ├── package.json            # Dev dependency: @playwright/test
 ├── playwright.config.ts    # Playwright config (Chromium only)
@@ -57,7 +55,6 @@ Two Docker volumes persist state across container restarts:
 │   ├── playwright.yml      # Playwright test CI
 │   └── security.yml        # Security scanning (Hadolint, npm audit, Gitleaks, Trivy)
 ├── tests/                  # Playwright e2e tests
-│   ├── ttyd.spec.ts        # ttyd web terminal tests
 │   ├── api.spec.ts         # API endpoint tests (healthz, auth, sessions, browse)
 │   ├── web-ui.spec.ts      # Web UI login/auth tests
 │   ├── ws.spec.ts          # WebSocket connection tests
@@ -171,12 +168,11 @@ Two Docker volumes persist state across container restarts:
             └── s6-rc.d/
                 ├── init/                # Oneshot service (runs init.sh)
                 ├── sshd/                # Long-running SSH daemon
-                ├── ttyd/                # Long-running web terminal
                 ├── dockerd/             # Long-running Docker daemon (DinD)
                 ├── api/                 # Long-running API server
                 ├── tailscaled/          # Long-running Tailscale daemon (opt-in)
                 ├── tailscaled-up/       # Oneshot: authenticate with tailnet
-                └── user/                # Bundle: init + sshd + ttyd + dockerd + api + tailscaled-up
+                └── user/                # Bundle: init + sshd + dockerd + api + tailscaled-up
 ```
 
 ## Common Commands
@@ -215,7 +211,7 @@ else
 fi
 ```
 
-Note: Without Sysbox, Docker-in-Docker will not work inside the nested container (dockerd requires Sysbox's enhanced isolation). SSH, ttyd, and Claude Code will function normally.
+Note: Without Sysbox, Docker-in-Docker will not work inside the nested container (dockerd requires Sysbox's enhanced isolation). SSH and Claude Code will function normally.
 
 ## Authentication
 
@@ -276,10 +272,10 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 - Version tags follow SemVer with a `v` prefix: `v<major>.<minor>.<patch>`. Bump MAJOR for breaking changes, MINOR for new features, PATCH for bug fixes. Use the `/release` skill to cut a release — it handles the full sequence: bumping `server/package.json` and `server/package-lock.json`, rebuilding dist, committing, tagging, and pushing.
 - Container runs as `hatchpod` user (uid 1000) with passwordless sudo
 - Two Docker volumes: `home` (/home/hatchpod) and `docker-data` (/var/lib/docker)
-- s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/ttyd, `bundle` for user
+- s6-overlay v3 service types: `oneshot` for init, `longrun` for sshd/dockerd/api, `bundle` for user
 - `S6_KEEP_ENV=1` ensures environment variables propagate to all services
 - When adding or removing software from the Dockerfile, update the "What's Included" table in README.md to match
-- **Login shell PATH additions** — `/etc/profile` resets `PATH` before sourcing `/etc/profile.d/`, discarding any Docker `ENV PATH`. System-wide PATH additions (npm-global, custom tools) must go in `rootfs/etc/profile.d/` to be visible in all login shells (ttyd, web terminal, SSH). `.bashrc` is for interactive non-login shells only — it early-returns if not interactive and is never sourced by a login shell unless `~/.profile` explicitly sources it.
+- **Login shell PATH additions** — `/etc/profile` resets `PATH` before sourcing `/etc/profile.d/`, discarding any Docker `ENV PATH`. System-wide PATH additions (npm-global, custom tools) must go in `rootfs/etc/profile.d/` to be visible in all login shells (web terminal, SSH). `.bashrc` is for interactive non-login shells only — it early-returns if not interactive and is never sourced by a login shell unless `~/.profile` explicitly sources it.
 - **Dockerfile skel ordering** — `useradd -m` (Dockerfile line ~110) copies `/etc/skel` into the home dir at user-creation time. `COPY rootfs/ /` runs after — so custom dotfiles in `rootfs/etc/skel/` are NOT applied to `/home/hatchpod/` at build time (only to `/etc/skel/` for future volumes). `init.sh` only seeds skel files when they don't exist (volume-persistence semantics). Prefer `rootfs/etc/profile.d/` for changes that must be in place from the first container start.
 - Tailscale and dotfiles are opt-in features controlled by env vars (`TS_AUTHKEY`, `DOTFILES_REPO`)
 - `docker-compose.yml` includes `cap_add: NET_ADMIN` and `/dev/net/tun` device for Tailscale kernel TUN mode; harmless when Tailscale is not enabled
@@ -305,10 +301,8 @@ The test server on port 9080 can serve CLI session history and test-provider ses
 
 ### Automated tests (Playwright)
 
-Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket connections, static file serving, session message delivery, and the embedded terminal. The config (`playwright.config.ts`) defines nine test projects:
+Playwright e2e tests cover the API endpoints, web UI, WebSocket connections, static file serving, session message delivery, and the embedded terminal. The config (`playwright.config.ts`) defines seven test projects:
 
-- `ttyd-chromium` → `http://localhost:7681` (basic-auth)
-- `ttyd-firefox` → `http://localhost:7681` (basic-auth)
 - `api` → `http://localhost:8080` (bearer token)
 - `web-ui` → `http://localhost:8080` (browser)
 - `web-ui-firefox` → `http://localhost:8080` (browser)
@@ -317,9 +311,9 @@ Playwright e2e tests cover the ttyd terminal, API endpoints, web UI, WebSocket c
 - `terminal` → `http://localhost:8080` (embedded terminal WebSocket)
 - `session-delivery` → `http://localhost:8080` (test provider, requires `ENABLE_TEST_PROVIDER=1`)
 
-Ports are configurable via `TTYD_PORT` and `API_PORT` env vars (default to 7681/8080). When running tests inside hatchpod itself, use offset ports to avoid conflicts with the host services (e.g., `TTYD_PORT=17681 API_PORT=18080`).
+Ports are configurable via `API_PORT` env var (defaults to 8080). When running tests inside hatchpod itself, use offset ports to avoid conflicts with the host services (e.g., `API_PORT=18080`).
 
-**Important:** Always run tests by building and running the Docker container first — do not run them against an externally running instance. The tests depend on the container's ttyd configuration (writable mode, auth credentials, ping interval).
+**Important:** Always run tests by building and running the Docker container first — do not run them against an externally running instance.
 
 **Rate limiter and test isolation:** The API rate limiter tracks failed auth attempts in memory (10 failures / 15 min per IP). Always use a **fresh container** for each Playwright run — running the suite multiple times against the same container exhausts the limit and subsequent runs get 429 even with the correct password. Always `docker rm -f hatchpod-test` before starting a new run.
 
@@ -329,17 +323,15 @@ Ports are configurable via `TTYD_PORT` and `API_PORT` env vars (default to 7681/
 # 1. Build and run the container (use offset ports when running inside hatchpod)
 docker build -t hatchpod:latest .
 docker run -d --name hatchpod-test \
-  -p 17681:7681 -p 12222:2222 -p 18080:8080 \
+  -p 12222:2222 -p 18080:8080 \
   --runtime runc \
-  -e TTYD_USERNAME=hatchpod \
-  -e TTYD_PASSWORD=changeme \
   -e API_PASSWORD=changeme \
   -e ENABLE_TEST_PROVIDER=1 \
   hatchpod:latest
 
 # 2. Run tests (pass offset ports AND API_PASSWORD — don't inherit the production password)
 npm install
-TTYD_PORT=17681 API_PORT=18080 API_PASSWORD=changeme npx playwright test
+API_PORT=18080 API_PASSWORD=changeme npx playwright test
 
 # 3. Clean up
 docker rm -f hatchpod-test
@@ -347,7 +339,6 @@ docker rm -f hatchpod-test
 
 ### Test files
 
-- **`tests/ttyd.spec.ts`** — ttyd web terminal: loads xterm.js, renders, accepts input, WebSocket stays alive, auth challenge
 - **`tests/api.spec.ts`** — REST API: healthz, auth, session CRUD, browse endpoint (directory listing, path traversal rejection, auth)
 - **`tests/web-ui.spec.ts`** — Web UI: login page rendering, authentication flow
 - **`tests/ws.spec.ts`** — WebSocket: connection lifecycle, message exchange
@@ -358,16 +349,15 @@ docker rm -f hatchpod-test
 ### Manual verification
 
 1. **Build** — `make build` must complete without errors.
-2. **Startup** — `make up` then `docker compose ps` should show the container as healthy (healthcheck curls `http://localhost:7681`).
+2. **Startup** — `make up` then `docker compose ps` should show the container as healthy (healthcheck curls `http://localhost:8080/healthz`).
 3. **SSH access** — `make ssh` (or `ssh -p 2222 hatchpod@localhost`) should connect and drop into a bash shell.
 4. **Mosh access** — `make mosh` (or `mosh --ssh='ssh -p 2222' hatchpod@localhost`) should connect and drop into a bash shell. Verify the session survives a brief network interruption (e.g., sleep/wake laptop).
-5. **Web terminal** — open `http://localhost:7681` in a browser, authenticate with `TTYD_USERNAME`/`TTYD_PASSWORD`.
-6. **Claude Code** — run `claude` inside the container and follow the login link to authenticate.
-7. **Volume persistence** — `make down && make up`, then verify files in `~/workspace` and `~/.claude` survived the restart.
-8. **Docker-in-Docker** — `make docker-test` runs `docker run hello-world` inside the container (requires Sysbox on host).
-9. **CI** — GitHub Actions runs `docker compose build` and verifies the image starts and passes its healthcheck. Note: Sysbox is not available in CI, so dockerd will not start there.
-10. **Tailscale VPN** — set `TS_AUTHKEY` in `.env`, restart, verify `tailscale status` shows the node connected to the tailnet.
-11. **Dotfiles** — set `DOTFILES_REPO` in `.env`, start a fresh container (no existing `home` volume), verify `~/dotfiles` is cloned and install script was run.
+5. **Claude Code** — run `claude` inside the container and follow the login link to authenticate.
+6. **Volume persistence** — `make down && make up`, then verify files in `~/workspace` and `~/.claude` survived the restart.
+7. **Docker-in-Docker** — `make docker-test` runs `docker run hello-world` inside the container (requires Sysbox on host).
+8. **CI** — GitHub Actions runs `docker compose build` and verifies the image starts and passes its healthcheck. Note: Sysbox is not available in CI, so dockerd will not start there.
+9. **Tailscale VPN** — set `TS_AUTHKEY` in `.env`, restart, verify `tailscale status` shows the node connected to the tailnet.
+10. **Dotfiles** — set `DOTFILES_REPO` in `.env`, start a fresh container (no existing `home` volume), verify `~/dotfiles` is cloned and install script was run.
 
 ## Agent Workflow Conventions
 
@@ -385,14 +375,14 @@ User-invokable skills in `.claude/skills/`:
 
 - **`/dev-server`** — Start the Vite dev server + API server for UI development. Use this instead of rebuilding `server/public/` when working on UI files.
 - **`/build-and-test`** — After modifying `server/src/` files: rebuilds `server/dist/` via `npm run build`, runs vitest unit tests, and stages the rebuilt dist files. Stops on failure.
-- **`/docker-e2e`** — Full e2e test cycle: builds Docker image, starts a container on offset ports (17681/12222/18080), waits for healthy, runs Playwright tests, and cleans up. Safe to run inside hatchpod itself.
+- **`/docker-e2e`** — Full e2e test cycle: builds Docker image, starts a container on offset ports (12222/18080), waits for healthy, runs Playwright tests, and cleans up. Safe to run inside hatchpod itself.
 - **`/release`** — Cut a release: asks for bump type (patch/minor/major), updates version, rebuilds dist, runs tests, commits, tags, and pushes. Use instead of doing version tags manually.
 
 ### Subagents
 
 Specialized review agents in `.claude/agents/`:
 
-- **`security-reviewer`** — Reviews auth (bearer token, WebSocket, SSH, ttyd), path traversal (browse endpoint, session cwd), container security (Dockerfile, s6 scripts), and info disclosure. Reports findings with severity and file:line references.
+- **`security-reviewer`** — Reviews auth (bearer token, WebSocket, SSH), path traversal (browse endpoint, session cwd), container security (Dockerfile, s6 scripts), and info disclosure. Reports findings with severity and file:line references.
 - **`ui-reviewer`** — Reviews the React frontend for WCAG 2.1 AA accessibility (keyboard nav, ARIA, contrast), UX states (loading, error, empty), responsive layout, and React patterns (effect cleanup, re-renders, stale closures).
 
 ### Hooks
