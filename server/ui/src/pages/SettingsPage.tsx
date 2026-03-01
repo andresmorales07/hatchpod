@@ -1,11 +1,53 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSettingsStore } from "@/stores/settings";
 import { useSessionsStore } from "@/stores/sessions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Moon, Sun, Terminal, Info, Bot } from "lucide-react";
+import { useAuthStore } from "@/stores/auth";
+import type { RateLimitInfo } from "@/stores/messages";
+import { Moon, Sun, Terminal, Info, Bot, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface CachedRateLimits {
+  info: RateLimitInfo;
+  lastUpdated: string;
+}
+
+const RATE_LIMIT_LABELS: Record<string, string> = {
+  five_hour: "Session limit",
+  seven_day: "Weekly limit",
+  seven_day_opus: "Opus limit",
+  seven_day_sonnet: "Sonnet limit",
+  overage: "Extra usage",
+};
+
+function formatRelativeTime(isoDate: string): string {
+  const diff = Date.now() - new Date(isoDate).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatResetTime(resetsAt: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = resetsAt - now;
+  if (diff <= 0) return "resetting now";
+  const hours = Math.floor(diff / 3600);
+  const mins = Math.floor((diff % 3600) / 60);
+  if (hours > 0) return `resets in ${hours}h ${mins}m`;
+  return `resets in ${mins}m`;
+}
+
+function barColor(utilization: number): string {
+  const pct = utilization * 100;
+  if (pct >= 90) return "bg-red-400";
+  if (pct >= 75) return "bg-amber-400";
+  return "bg-emerald-400";
+}
 
 export function SettingsPage() {
   const { theme, terminalFontSize, terminalScrollback, terminalShell, claudeModel, claudeEffort, updateSettings } =
@@ -16,6 +58,29 @@ export function SettingsPage() {
   const [localFontSize, setLocalFontSize] = useState(String(terminalFontSize));
   const [localScrollback, setLocalScrollback] = useState(String(terminalScrollback));
   const [localShell, setLocalShell] = useState(terminalShell);
+
+  const token = useAuthStore((s) => s.token);
+  const [rateLimits, setRateLimits] = useState<CachedRateLimits | null>(null);
+  const [rateLimitsLoading, setRateLimitsLoading] = useState(true);
+
+  const fetchRateLimits = useCallback(async () => {
+    try {
+      const res = await fetch("/api/rate-limits", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 204) {
+        setRateLimits(null);
+      } else if (res.ok) {
+        setRateLimits(await res.json());
+      }
+    } catch {
+      // Silently fail — non-critical
+    } finally {
+      setRateLimitsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { fetchRateLimits(); }, [fetchRateLimits]);
 
   // Re-sync local state when store values change (e.g. after fetchSettings resolves)
   useEffect(() => { setLocalFontSize(String(terminalFontSize)); }, [terminalFontSize]);
@@ -160,6 +225,58 @@ export function SettingsPage() {
               </div>
               <p className="text-xs text-muted-foreground mt-2">Max effort is only available with Opus.</p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Usage */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Gauge className="size-4 text-muted-foreground" />
+              <CardTitle>Usage</CardTitle>
+            </div>
+            <CardDescription>Subscription rate limits from your Claude account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {rateLimitsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : !rateLimits ? (
+              <p className="text-sm text-muted-foreground">
+                No usage data available — rate limits are reported after your first session.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {rateLimits.info.rateLimitType && rateLimits.info.utilization !== undefined && (
+                  <div>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="font-medium">
+                        {RATE_LIMIT_LABELS[rateLimits.info.rateLimitType] ?? rateLimits.info.rateLimitType}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {Math.floor(rateLimits.info.utilization * 100)}%
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full transition-all", barColor(rateLimits.info.utilization))}
+                        style={{ width: `${Math.min(100, rateLimits.info.utilization * 100)}%` }}
+                      />
+                    </div>
+                    {rateLimits.info.resetsAt && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatResetTime(rateLimits.info.resetsAt)}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {rateLimits.info.isUsingOverage && (
+                  <p className="text-xs text-amber-400">Using extra usage</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Last updated {formatRelativeTime(rateLimits.lastUpdated)}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
