@@ -753,9 +753,9 @@ export async function preloadSupportedModels(): Promise<void> {
       },
     });
     const raw = await queryHandle.supportedModels();
-    cachedModels = (raw as Array<Record<string, unknown>>).map((m) => ({
-      id: String(m.id ?? m),
-      name: typeof m.name === "string" ? m.name : undefined,
+    cachedModels = raw.map((m) => ({
+      id: m.value,
+      name: m.displayName,
     }));
     queryHandle.close();
   } catch (err) {
