@@ -44,12 +44,14 @@ export type ClientMessage =
   | { type: "approve"; toolUseId: string; alwaysAllow?: boolean; answers?: Record<string, string>; targetMode?: string; clearContext?: boolean }
   | { type: "deny"; toolUseId: string; message?: string }
   | { type: "interrupt" }
-  | { type: "set_mode"; mode: string };
+  | { type: "set_mode"; mode: string }
+  | { type: "set_model"; model: string };
 
 export type ServerMessage =
   | { type: "message"; message: NormalizedMessage }
   | { type: "tool_approval_request"; toolName: string; toolUseId: string; input: unknown; targetMode?: string }
   | { type: "mode_changed"; mode: PermissionModeCommon }
+  | { type: "model_changed"; model: string }
   | { type: "status"; status: SessionStatus; error?: string; source?: "api" | "cli" }
   | { type: "session_redirected"; newSessionId: string; fresh?: boolean }
   | { type: "slash_commands"; commands: SlashCommand[] }

@@ -301,6 +301,10 @@ async function runSession(
           summary: info.summary,
         });
       },
+      onModelResolved: (model: string) => {
+        session.model = model;
+        watcher!.pushEvent(session.sessionId, { type: "model_changed", model });
+      },
       onModeChanged: (newMode: PermissionModeCommon) => {
         session.currentPermissionMode = newMode;
         watcher!.pushEvent(session.sessionId, { type: "mode_changed", mode: newMode });

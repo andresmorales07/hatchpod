@@ -368,6 +368,14 @@ export class ClaudeAdapter implements ProviderAdapter {
                 console.error("claude-adapter: onSessionIdResolved callback failed:", err);
               }
             }
+            const model = (sysMsg as { model?: string }).model;
+            if (model) {
+              try {
+                options.onModelResolved?.(model);
+              } catch (err) {
+                console.error("claude-adapter: onModelResolved callback failed:", err);
+              }
+            }
           } else if (sysMsg.subtype !== undefined) {
             console.warn(`claude-adapter: unhandled system subtype "${sysMsg.subtype}"`, sysMsg);
           }
