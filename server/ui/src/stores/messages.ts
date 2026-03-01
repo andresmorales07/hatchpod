@@ -687,7 +687,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       set({ lastError: "Failed to set model — not connected" });
       return;
     }
-    set({ currentModel: model }); // optimistic update
+    // No optimistic update — wait for server's model_changed confirmation
   },
 
   approvePlan: (toolUseId, { targetMode, clearContext, answers }) => {
