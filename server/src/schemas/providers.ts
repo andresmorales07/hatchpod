@@ -125,6 +125,11 @@ export const ModeChangedEventSchema = z.object({
   mode: PermissionModeCommonSchema,
 });
 
+export const ModelChangedEventSchema = z.object({
+  type: z.literal("model_changed"),
+  model: z.string().min(1),
+});
+
 export const SystemEventSchema = z
   .object({
     role: z.literal("system"),
@@ -249,3 +254,4 @@ export type SubagentToolCallEvent = z.infer<typeof SubagentToolCallEventSchema>;
 export type SubagentCompletedEvent = z.infer<typeof SubagentCompletedEventSchema>;
 export type CompactBoundaryEvent = z.infer<typeof CompactBoundaryEventSchema>;
 export type ModeChangedEvent = z.infer<typeof ModeChangedEventSchema>;
+export type ModelChangedEvent = z.infer<typeof ModelChangedEventSchema>;
