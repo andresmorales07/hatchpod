@@ -445,6 +445,23 @@ export class TestAdapter implements ProviderAdapter {
         break;
       }
 
+      case "model-changed": {
+        // Simulate model resolution from init
+        try {
+          options.onModelResolved?.("test-model-v1");
+        } catch (err) {
+          console.error("test-adapter: onModelResolved callback failed:", err);
+        }
+
+        checkAbort(abortSignal);
+        yield {
+          role: "assistant",
+          parts: [{ type: "text", text: `Echo: ${cleanPrompt}` }],
+          index: index++,
+        };
+        break;
+      }
+
       default: {
         // Echo scenario (default)
         checkAbort(abortSignal);

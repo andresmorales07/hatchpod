@@ -5,6 +5,7 @@ import { getActiveSession, handleApproval, sendFollowUp, interruptSession, getWa
 import type { ClientMessage, ServerMessage } from "./types.js";
 import type { PermissionModeCommon } from "./providers/types.js";
 import { PermissionModeCommonSchema } from "./schemas/providers.js";
+import { getCachedModels } from "./providers/claude-adapter.js";
 
 const WS_PATH_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/stream$/;
 
@@ -101,6 +102,12 @@ function setupSessionConnection(ws: WebSocket, sessionId: string, messageLimit?:
       input,
       ...(targetMode ? { targetMode } : {}),
     } satisfies ServerMessage));
+  }
+
+  // Send current model to late-joining/reconnecting WS clients.
+  // For new sessions, the model arrives asynchronously via onModelResolved.
+  if (activeSession?.model) {
+    ws.send(JSON.stringify({ type: "model_changed", model: activeSession.model } satisfies ServerMessage));
   }
 
   // Heartbeat: protocol-level ping detects dead clients, JSON ping keeps client watchdog alive.
@@ -213,6 +220,42 @@ function setupSessionConnection(ws: WebSocket, sessionId: string, messageLimit?:
         }
         session.currentPermissionMode = parsed.mode as PermissionModeCommon;
         watcher.pushEvent(session.sessionId, { type: "mode_changed", mode: parsed.mode as PermissionModeCommon });
+        break;
+      }
+
+      case "set_model": {
+        const model = parsed.model;
+        if (typeof model !== "string" || model.length === 0) {
+          ws.send(JSON.stringify({ type: "error", message: "model must be a non-empty string" } satisfies ServerMessage));
+          break;
+        }
+        const models = getCachedModels();
+        if (models && !models.some((m) => m.id === model)) {
+          ws.send(JSON.stringify({ type: "error", message: `unsupported model: ${model}` } satisfies ServerMessage));
+          break;
+        }
+        if (session.queryHandle?.setModel) {
+          // Live SDK process — defer broadcast until SDK confirms
+          const previousModel = session.model;
+          session.model = model;
+          session.queryHandle.setModel(model).then(
+            () => {
+              watcher.pushEvent(session.sessionId, { type: "model_changed", model });
+            },
+            (err) => {
+              console.error(`setModel failed for session ${session.sessionId}:`, err);
+              session.model = previousModel;
+              ws.send(JSON.stringify({ type: "error", message: `Failed to switch model: ${err instanceof Error ? err.message : String(err)}` } satisfies ServerMessage));
+              if (previousModel) {
+                watcher.pushEvent(session.sessionId, { type: "model_changed", model: previousModel });
+              }
+            },
+          );
+        } else {
+          // No live query — store for next run and broadcast immediately
+          session.model = model;
+          watcher.pushEvent(session.sessionId, { type: "model_changed", model });
+        }
         break;
       }
 

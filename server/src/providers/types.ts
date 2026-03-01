@@ -51,6 +51,7 @@ export interface ProviderQueryHandle {
   streamInput(messages: AsyncIterable<unknown>): Promise<void>;
   close(): void;
   interrupt?(): void;
+  setModel?(model: string): Promise<void>;
 }
 
 export interface ProviderSessionOptions {
@@ -73,6 +74,7 @@ export interface ProviderSessionOptions {
   onContextUsage?: (usage: { inputTokens: number; contextWindow: number }) => void;
   onModeChanged?: (newMode: PermissionModeCommon) => void;
   onSessionIdResolved?: (sessionId: string) => void;
+  onModelResolved?: (model: string) => void;
   /** Called immediately after the SDK query handle is created. Used to store a live reference for streaming input. */
   onQueryCreated?: (handle: ProviderQueryHandle) => void;
 }

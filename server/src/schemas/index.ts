@@ -24,6 +24,7 @@ export {
   SubagentStartedEventSchema,
   SubagentToolCallEventSchema,
   SubagentCompletedEventSchema,
+  ModelChangedEventSchema,
 } from "./providers.js";
 
 export type {
@@ -49,6 +50,7 @@ export type {
   SubagentToolCallEvent,
   SubagentCompletedEvent,
   ModeChangedEvent,
+  ModelChangedEvent,
 } from "./providers.js";
 
 export {

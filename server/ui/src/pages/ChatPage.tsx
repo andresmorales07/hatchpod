@@ -16,6 +16,8 @@ import { ArrowDown, ArrowLeft, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PERMISSION_MODES } from "@/lib/sessions";
 import { TaskList } from "@/components/TaskList";
+import { ModelPicker, modelLabel } from "@/components/ModelPicker";
+import { SessionInfoSheet } from "@/components/SessionInfoSheet";
 import type { NormalizedMessage, ToolResultPart, ToolUsePart, ExtractedTask, TaskStatus } from "@shared/types";
 
 const statusStyles: Record<string, string> = {
@@ -126,11 +128,12 @@ export function ChatPage() {
     thinkingText, thinkingStartTime,
     hasOlderMessages, loadingOlderMessages, loadOlderMessages, serverTasks,
     isCompacting, contextUsage, gitDiffStat,
-    currentMode, setMode, approvePlan,
+    currentMode, setMode, currentModel, approvePlan,
     connect, disconnect, sendPrompt, approve, approveAlways, deny, interrupt,
   } = useMessagesStore();
   const activeSession = useSessionsStore((s) => s.sessions.find((sess) => sess.id === id));
   const activeSessionId = useSessionsStore((s) => s.activeSessionId);
+  const supportedModels = useSessionsStore((s) => s.supportedModels);
 
   useEffect(() => {
     if (activeSessionId && activeSessionId !== id) {
@@ -141,6 +144,8 @@ export function ChatPage() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const [showModeSwitcher, setShowModeSwitcher] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const modeSwitcherRef = useRef<HTMLDivElement>(null);
@@ -261,6 +266,17 @@ export function ChatPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showModeSwitcher]);
 
+  useEffect(() => {
+    if (!showModelPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (!modelPickerRef.current?.contains(e.target as Node)) {
+        setShowModelPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showModelPicker]);
+
   const isRunning = status === "running" || status === "starting";
   // Show indicator for the entire "running" phase — not just when thinking text streams in.
   // Thinking text provides detail; the indicator itself shows "Thinking" as a baseline.
@@ -279,8 +295,28 @@ export function ChatPage() {
           </Button>
         )}
         <span className="text-sm font-medium truncate flex-1">{sessionName}</span>
-        {contextUsage && <ContextUsageBadge percentUsed={contextUsage.percentUsed} />}
-        {currentMode && (
+        {isDesktop && contextUsage && <ContextUsageBadge percentUsed={contextUsage.percentUsed} />}
+        {isDesktop && currentModel && (
+          <div className="relative" ref={modelPickerRef}>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-xs font-semibold uppercase tracking-wide cursor-pointer select-none",
+                "bg-violet-500/15 text-violet-400 border-transparent",
+                "hover:ring-1 hover:ring-current"
+              )}
+              onClick={() => setShowModelPicker((v) => !v)}
+            >
+              {modelLabel(currentModel, supportedModels?.find((m) => m.id === currentModel)?.name)}
+            </Badge>
+            {showModelPicker && (
+              <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-card border border-border rounded-lg shadow-xl overflow-hidden">
+                <ModelPicker onSelect={() => setShowModelPicker(false)} />
+              </div>
+            )}
+          </div>
+        )}
+        {isDesktop && currentMode && (
           <div className="relative" ref={modeSwitcherRef}>
             <Badge
               variant="outline"
@@ -319,10 +355,22 @@ export function ChatPage() {
         <Badge variant="outline" className={cn("text-xs font-semibold uppercase tracking-wide", statusStyles[status])}>
           {status}
         </Badge>
-        {!connected && status !== "history" && (
+        {isDesktop && !connected && status !== "history" && (
           <Badge variant="outline" className={cn("text-xs font-semibold uppercase tracking-wide", statusStyles.disconnected)}>
             offline
           </Badge>
+        )}
+        {!isDesktop && (
+          <SessionInfoSheet
+            currentModel={currentModel}
+            currentMode={currentMode}
+            contextUsage={contextUsage}
+            connected={connected}
+            status={status}
+            supportedModels={supportedModels}
+            canSwitchMode={canSwitchMode}
+            onSetMode={setMode}
+          />
         )}
       </div>
 

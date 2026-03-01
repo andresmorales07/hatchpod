@@ -9,6 +9,7 @@ type ServerMessage =
   | { type: "status"; status: string; error?: string; source?: "api" | "cli" }
   | { type: "session_redirected"; newSessionId: string; fresh?: boolean }
   | { type: "mode_changed"; mode: PermissionModeCommon }
+  | { type: "model_changed"; model: string }
   | { type: "slash_commands"; commands: SlashCommand[] }
   | { type: "thinking_delta"; text: string }
   | { type: "replay_complete"; totalMessages?: number; oldestIndex?: number }
@@ -100,6 +101,9 @@ interface MessagesState {
   // Current permission mode
   currentMode: PermissionModeCommon | null;
 
+  // Current model
+  currentModel: string | null;
+
   connect: (sessionId: string) => void;
   disconnect: () => void;
   sendPrompt: (text: string) => boolean;
@@ -109,6 +113,7 @@ interface MessagesState {
   interrupt: () => void;
   loadOlderMessages: () => void;
   setMode: (mode: PermissionModeCommon) => void;
+  setModel: (model: string) => void;
   approvePlan: (toolUseId: string, opts: { targetMode: string; clearContext: boolean; answers?: Record<string, string> }) => void;
 }
 
@@ -171,6 +176,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   contextUsage: null,
   gitDiffStat: null,
   currentMode: null,
+  currentModel: null,
 
   connect: (sessionId: string) => {
     // Capture remap state BEFORE clearing _redirectingTo — the guard below
@@ -219,6 +225,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         contextUsage: null,
         gitDiffStat: null,
         currentMode: null,
+        currentModel: null,
       });
 
       // Initialize currentMode from session DTO before WS events arrive
@@ -364,6 +371,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             break;
           case "mode_changed":
             set({ currentMode: msg.mode });
+            break;
+          case "model_changed":
+            set({ currentModel: msg.model });
             break;
           case "tool_approval_request":
             set({ pendingApproval: {
@@ -670,6 +680,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       return;
     }
     set({ currentMode: mode }); // optimistic update
+  },
+
+  setModel: (model: string) => {
+    if (!send({ type: "set_model", model })) {
+      set({ lastError: "Failed to set model — not connected" });
+      return;
+    }
+    // No optimistic update — wait for server's model_changed confirmation
   },
 
   approvePlan: (toolUseId, { targetMode, clearContext, answers }) => {

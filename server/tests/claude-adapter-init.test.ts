@@ -102,4 +102,45 @@ describe("ClaudeAdapter init message handling", () => {
 
     expect(resolved).toHaveLength(0);
   });
+
+  it("calls onModelResolved with model from init system message", async () => {
+    const models: string[] = [];
+
+    mockQuery.mockReturnValue(
+      createMockHandle([
+        { type: "system", subtype: "init", session_id: "sess-1", model: "claude-opus-4-6-20250514" },
+        { type: "assistant", message: { content: [{ type: "text", text: "Hello!" }] } },
+        { type: "result", total_cost_usd: 0, num_turns: 1, session_id: "sess-1" },
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter();
+    const gen = adapter.run(makeOptions({
+      onModelResolved: (m) => models.push(m),
+    }));
+
+    while (!(await gen.next()).done) { /* exhaust */ }
+
+    expect(models).toEqual(["claude-opus-4-6-20250514"]);
+  });
+
+  it("does not call onModelResolved when init message has no model", async () => {
+    const models: string[] = [];
+
+    mockQuery.mockReturnValue(
+      createMockHandle([
+        { type: "system", subtype: "init", session_id: "sess-2" /* no model */ },
+        { type: "result", total_cost_usd: 0, num_turns: 0 },
+      ]),
+    );
+
+    const adapter = new ClaudeAdapter();
+    const gen = adapter.run(makeOptions({
+      onModelResolved: (m) => models.push(m),
+    }));
+
+    while (!(await gen.next()).done) { /* exhaust */ }
+
+    expect(models).toHaveLength(0);
+  });
 });
