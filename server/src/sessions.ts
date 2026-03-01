@@ -3,6 +3,7 @@ import type { ProviderAdapter, NormalizedMessage, ProviderSessionResult, Permiss
 import type { ActiveSession, CreateSessionRequest, SessionSummaryDTO, ServerMessage } from "./types.js";
 import { SessionWatcher } from "./session-watcher.js";
 import { computeGitDiffStat } from "./git-status.js";
+import { updateCachedRateLimits } from "./rate-limits.js";
 import { randomUUID } from "node:crypto";
 
 // ── ActiveSession map (runtime handles for API-driven sessions) ──
@@ -321,6 +322,10 @@ async function runSession(
           contextWindow: usage.contextWindow,
           percentUsed,
         });
+      },
+      onRateLimit: (info) => {
+        updateCachedRateLimits(info);
+        watcher!.pushEvent(session.sessionId, { type: "rate_limit", ...info });
       },
       onToolProgress: (info) => {
         watcher!.pushEvent(session.sessionId, {

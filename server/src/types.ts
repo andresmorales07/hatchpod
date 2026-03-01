@@ -65,6 +65,7 @@ export type ServerMessage =
   | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
   | { type: "tool_progress"; toolUseId: string; toolName: string; elapsedSeconds: number }
   | { type: "git_diff_stat"; files: Array<{ path: string; insertions: number; deletions: number; binary: boolean; untracked: boolean; staged: boolean }>; totalInsertions: number; totalDeletions: number; branch?: string }
+  | { type: "rate_limit"; status: string; rateLimitType?: string; utilization?: number; resetsAt?: number; overageStatus?: string; overageResetsAt?: number; overageDisabledReason?: string; isUsingOverage?: boolean; surpassedThreshold?: number }
   | { type: "ping" }
   | { type: "error"; message: string };
 
