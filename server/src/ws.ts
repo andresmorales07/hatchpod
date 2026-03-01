@@ -103,6 +103,11 @@ function setupSessionConnection(ws: WebSocket, sessionId: string, messageLimit?:
     } satisfies ServerMessage));
   }
 
+  // Send current model for API sessions
+  if (activeSession?.model) {
+    ws.send(JSON.stringify({ type: "model_changed", model: activeSession.model } satisfies ServerMessage));
+  }
+
   // Heartbeat: protocol-level ping detects dead clients, JSON ping keeps client watchdog alive.
   // The `ws` library auto-replies with pong when it receives a protocol ping from the browser,
   // and the browser auto-replies with pong when it receives our protocol ping.
@@ -213,6 +218,22 @@ function setupSessionConnection(ws: WebSocket, sessionId: string, messageLimit?:
         }
         session.currentPermissionMode = parsed.mode as PermissionModeCommon;
         watcher.pushEvent(session.sessionId, { type: "mode_changed", mode: parsed.mode as PermissionModeCommon });
+        break;
+      }
+
+      case "set_model": {
+        const model = parsed.model;
+        if (typeof model !== "string" || model.length === 0) {
+          ws.send(JSON.stringify({ type: "error", message: "model must be a non-empty string" } satisfies ServerMessage));
+          break;
+        }
+        session.model = model;
+        if (session.queryHandle?.setModel) {
+          session.queryHandle.setModel(model).catch((err) => {
+            console.error(`setModel failed for session ${session.sessionId}:`, err);
+          });
+        }
+        watcher.pushEvent(session.sessionId, { type: "model_changed", model });
         break;
       }
 
