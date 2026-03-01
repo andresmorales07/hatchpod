@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { toast } from "sonner";
 import { useAuthStore } from "./auth";
 import { useSessionsStore } from "./sessions";
 import type { NormalizedMessage, SlashCommand, ExtractedTask, ToolSummary, PermissionModeCommon } from "@shared/types";
@@ -21,6 +22,7 @@ type ServerMessage =
   | { type: "compacting"; isCompacting: boolean }
   | { type: "context_usage"; inputTokens: number; contextWindow: number; percentUsed: number }
   | { type: "git_diff_stat"; files: GitFileStat[]; totalInsertions: number; totalDeletions: number; branch?: string }
+  | { type: "rate_limit"; status: string; rateLimitType?: string; utilization?: number; resetsAt?: number; overageStatus?: string; overageResetsAt?: number; overageDisabledReason?: string; isUsingOverage?: boolean; surpassedThreshold?: number }
   | { type: "ping" }
   | { type: "error"; message: string; error?: string };
 
@@ -65,6 +67,18 @@ interface PendingApproval {
   targetMode?: string;
 }
 
+export interface RateLimitInfo {
+  status: "allowed" | "allowed_warning" | "rejected";
+  resetsAt?: number;
+  rateLimitType?: "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage";
+  utilization?: number;
+  overageStatus?: "allowed" | "allowed_warning" | "rejected";
+  overageResetsAt?: number;
+  overageDisabledReason?: string;
+  isUsingOverage?: boolean;
+  surpassedThreshold?: number;
+}
+
 interface MessagesState {
   messages: NormalizedMessage[];
   status: string;
@@ -97,6 +111,9 @@ interface MessagesState {
 
   // Git diff stats
   gitDiffStat: GitDiffStat | null;
+
+  // Subscription rate limit info (account-level, from SDK events)
+  rateLimitInfo: RateLimitInfo | null;
 
   // Current permission mode
   currentMode: PermissionModeCommon | null;
@@ -137,6 +154,40 @@ let seenIndices = new Set<number>();
 let _redirectingTo: string | null = null;
 let _redirectTimeout: ReturnType<typeof setTimeout> | undefined;
 
+let lastRateLimitToastKey = "";
+
+const RATE_LIMIT_LABELS: Record<string, string> = {
+  five_hour: "session limit",
+  seven_day: "weekly limit",
+  seven_day_opus: "Opus limit",
+  seven_day_sonnet: "Sonnet limit",
+  overage: "extra usage",
+};
+
+function formatResetTime(resetsAt: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = resetsAt - now;
+  if (diff <= 0) return "now";
+  const hours = Math.floor(diff / 3600);
+  const mins = Math.floor((diff % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function fireRateLimitToast(info: RateLimitInfo): void {
+  const label = RATE_LIMIT_LABELS[info.rateLimitType ?? ""] ?? "usage limit";
+  const pct = info.utilization !== undefined ? Math.floor(info.utilization * 100) : null;
+  const resetStr = info.resetsAt ? ` · resets in ${formatResetTime(info.resetsAt)}` : "";
+
+  if (info.status === "rejected") {
+    toast.error(`${label.charAt(0).toUpperCase() + label.slice(1)} reached${resetStr}`);
+  } else if (pct !== null) {
+    toast.warning(`You've used ${pct}% of your ${label}${resetStr}`);
+  } else {
+    toast.warning(`Approaching ${label}${resetStr}`);
+  }
+}
+
 function resetHeartbeat(): void {
   clearTimeout(heartbeatTimer);
   heartbeatTimer = setTimeout(() => {
@@ -175,6 +226,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   isCompacting: false,
   contextUsage: null,
   gitDiffStat: null,
+  rateLimitInfo: null,
   currentMode: null,
   currentModel: null,
 
@@ -224,6 +276,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         isCompacting: false,
         contextUsage: null,
         gitDiffStat: null,
+        rateLimitInfo: null,
         currentMode: null,
         currentModel: null,
       });
@@ -465,6 +518,30 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
               },
             });
             break;
+          case "rate_limit": {
+            const info: RateLimitInfo = {
+              status: msg.status as RateLimitInfo["status"],
+              ...(msg.rateLimitType ? { rateLimitType: msg.rateLimitType as RateLimitInfo["rateLimitType"] } : {}),
+              ...(msg.utilization !== undefined ? { utilization: msg.utilization } : {}),
+              ...(msg.resetsAt !== undefined ? { resetsAt: msg.resetsAt } : {}),
+              ...(msg.overageStatus ? { overageStatus: msg.overageStatus as RateLimitInfo["overageStatus"] } : {}),
+              ...(msg.overageResetsAt !== undefined ? { overageResetsAt: msg.overageResetsAt } : {}),
+              ...(msg.overageDisabledReason ? { overageDisabledReason: msg.overageDisabledReason } : {}),
+              ...(msg.isUsingOverage !== undefined ? { isUsingOverage: msg.isUsingOverage } : {}),
+              ...(msg.surpassedThreshold !== undefined ? { surpassedThreshold: msg.surpassedThreshold } : {}),
+            };
+            set({ rateLimitInfo: info });
+
+            // Fire toast on warning/rejected — deduplicate by type+status
+            if (info.status === "allowed_warning" || info.status === "rejected") {
+              const key = `${info.rateLimitType ?? "unknown"}:${info.status}`;
+              if (key !== lastRateLimitToastKey) {
+                lastRateLimitToastKey = key;
+                fireRateLimitToast(info);
+              }
+            }
+            break;
+          }
           case "error":
             console.error("Server error:", msg.message);
             set({ lastError: msg.message });
