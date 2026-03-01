@@ -60,7 +60,7 @@ Unlike ephemeral sandboxes (like [Docker Sandboxes](https://docs.docker.com/ai/s
 | | Ephemeral Sandboxes | Hatchpod |
 |---|---|---|
 | **Lifecycle** | Task-scoped, disposable | Persistent — pick up where you left off |
-| **Access** | Local only | SSH, Mosh, web terminal, Tailscale VPN |
+| **Access** | Local only | SSH, Mosh, Web UI, Tailscale VPN |
 | **Customization** | Pre-set image | Full Linux env with sudo, dotfiles, any tooling |
 | **Docker-in-Docker** | Limited or none | Full DinD via [Sysbox](https://github.com/nestybox/sysbox) |
 | **Requires** | Docker Desktop | Any Linux host with Docker Engine |

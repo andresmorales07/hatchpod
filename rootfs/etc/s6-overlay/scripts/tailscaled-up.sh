@@ -21,7 +21,7 @@ if [ ! -S /var/run/tailscale/tailscaled.sock ]; then
 fi
 
 # Tailscale auth failure is non-fatal — log the error but always exit 0
-# so that sshd and dockerd keep running.
+# so that other services keep running.
 if ! tailscale up \
     --authkey="$TS_AUTHKEY" \
     --hostname="${TS_HOSTNAME:-hatchpod}" \
