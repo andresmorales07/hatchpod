@@ -17,18 +17,14 @@ jobs:
       run: |
         docker build -t hatchpod-local .
         docker run -d --name hatchpod \
-          -p 7681:7681 \
           -p 8080:8080 \
-          -e TTYD_USERNAME=hatchpod \
-          -e TTYD_PASSWORD=changeme \
           -e API_PASSWORD=changeme \
           -e ENABLE_TEST_PROVIDER=1 \
           hatchpod-local
     - name: Wait for container to be healthy
       run: |
         for i in $(seq 1 30); do
-          if curl -sf -u hatchpod:changeme http://localhost:7681 > /dev/null 2>&1 \
-             && curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
+          if curl -sf http://localhost:8080/healthz > /dev/null 2>&1; then
             echo "Container is ready"
             exit 0
           fi
