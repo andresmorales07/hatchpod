@@ -74,6 +74,7 @@ export interface ProviderSessionOptions {
   onSubagentCompleted?: (info: SubagentCompletedEvent) => void;
   onCompacting?: (isCompacting: boolean) => void;
   onContextUsage?: (usage: { inputTokens: number; contextWindow: number }) => void;
+  onRateLimit?: (info: RateLimitInfo) => void;
   onModeChanged?: (newMode: PermissionModeCommon) => void;
   onSessionIdResolved?: (sessionId: string) => void;
   onModelResolved?: (model: string) => void;

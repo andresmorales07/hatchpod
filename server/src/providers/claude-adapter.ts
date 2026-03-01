@@ -454,6 +454,29 @@ export class ClaudeAdapter implements ProviderAdapter {
           continue;
         }
 
+        // Handle rate limit events (ephemeral — forwarded to UI via callback, not stored)
+        if (sdkMessage.type === "rate_limit_event") {
+          const rl = sdkMessage as { type: string; rate_limit_info: Record<string, unknown> };
+          if (rl.rate_limit_info) {
+            try {
+              options.onRateLimit?.({
+                status: rl.rate_limit_info.status as "allowed" | "allowed_warning" | "rejected",
+                ...(rl.rate_limit_info.resetsAt !== undefined ? { resetsAt: rl.rate_limit_info.resetsAt as number } : {}),
+                ...(rl.rate_limit_info.rateLimitType !== undefined ? { rateLimitType: rl.rate_limit_info.rateLimitType as "five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet" | "overage" } : {}),
+                ...(rl.rate_limit_info.utilization !== undefined ? { utilization: rl.rate_limit_info.utilization as number } : {}),
+                ...(rl.rate_limit_info.overageStatus !== undefined ? { overageStatus: rl.rate_limit_info.overageStatus as "allowed" | "allowed_warning" | "rejected" } : {}),
+                ...(rl.rate_limit_info.overageResetsAt !== undefined ? { overageResetsAt: rl.rate_limit_info.overageResetsAt as number } : {}),
+                ...(rl.rate_limit_info.overageDisabledReason !== undefined ? { overageDisabledReason: rl.rate_limit_info.overageDisabledReason as string } : {}),
+                ...(rl.rate_limit_info.isUsingOverage !== undefined ? { isUsingOverage: rl.rate_limit_info.isUsingOverage as boolean } : {}),
+                ...(rl.rate_limit_info.surpassedThreshold !== undefined ? { surpassedThreshold: rl.rate_limit_info.surpassedThreshold as number } : {}),
+              });
+            } catch (err) {
+              console.error("claude-adapter: onRateLimit callback failed:", err);
+            }
+          }
+          continue;
+        }
+
         // Capture result data before normalizing
         if (sdkMessage.type === "result") {
           const resultMsg = sdkMessage as SDKResultMessage;
