@@ -8,6 +8,7 @@ import { ConfigResponseSchema, ProviderInfoSchema } from "./config.js";
 import { BrowseResponseSchema } from "./browse.js";
 import { GitDiffStatSchema } from "./git.js";
 import { SettingsSchema, PatchSettingsSchema } from "./settings.js";
+import { WebhookSchema, CreateWebhookSchema, PatchWebhookSchema } from "./webhooks.js";
 import {
   NormalizedMessageSchema,
   PaginatedMessagesSchema,
@@ -431,6 +432,147 @@ registry.registerPath({
     },
     401: {
       description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+// --- Webhooks ---
+
+registry.registerPath({
+  method: "get",
+  path: "/api/webhooks",
+  summary: "List webhooks",
+  description: "Returns all configured webhooks.",
+  tags: ["Webhooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: {
+      description: "Webhook list",
+      content: { "application/json": { schema: z.array(WebhookSchema) } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/webhooks",
+  summary: "Create webhook",
+  description:
+    "Creates a new webhook. Set `events` to an empty array to receive all events. " +
+    "Use `template` for custom payload formatting (e.g., Pushover, Ntfy).",
+  tags: ["Webhooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    body: {
+      content: { "application/json": { schema: CreateWebhookSchema } },
+    },
+  },
+  responses: {
+    201: {
+      description: "Webhook created",
+      content: { "application/json": { schema: WebhookSchema } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/api/webhooks/{id}",
+  summary: "Update webhook",
+  description: "Partially updates a webhook. Only provided fields are changed.",
+  tags: ["Webhooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    params: z.object({
+      id: z.string().uuid().openapi({ description: "Webhook UUID" }),
+    }),
+    body: {
+      content: { "application/json": { schema: PatchWebhookSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Updated webhook",
+      content: { "application/json": { schema: WebhookSchema } },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: "Webhook not found",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/api/webhooks/{id}",
+  summary: "Delete webhook",
+  description: "Permanently removes a webhook.",
+  tags: ["Webhooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    params: z.object({
+      id: z.string().uuid().openapi({ description: "Webhook UUID" }),
+    }),
+  },
+  responses: {
+    204: {
+      description: "Webhook deleted",
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: "Webhook not found",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/webhooks/{id}/test",
+  summary: "Test webhook",
+  description: "Sends a test event to a webhook to verify connectivity.",
+  tags: ["Webhooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    params: z.object({
+      id: z.string().uuid().openapi({ description: "Webhook UUID" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Test event delivered",
+      content: { "application/json": { schema: z.object({ ok: z.boolean() }) } },
+    },
+    401: {
+      description: "Unauthorized",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    502: {
+      description: "Webhook delivery failed",
       content: { "application/json": { schema: ErrorResponseSchema } },
     },
   },

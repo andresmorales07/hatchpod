@@ -225,6 +225,8 @@ describe("GET /api/git/status", () => {
 // ── SessionWatcher git_diff_stat buffering tests ──
 
 import { SessionWatcher } from "../src/session-watcher.js";
+import { EventBus } from "../src/event-bus.js";
+import { WsBroadcaster } from "../src/ws-broadcaster.js";
 
 describe("SessionWatcher git_diff_stat buffering", () => {
   it("buffers and replays git_diff_stat to late subscribers", async () => {
@@ -237,7 +239,8 @@ describe("SessionWatcher git_diff_stat buffering", () => {
       run: () => { throw new Error("not implemented"); },
     } as any;
 
-    const watcher = new SessionWatcher(mockAdapter);
+    const bus = new EventBus();
+    const watcher = new SessionWatcher(mockAdapter, bus, new WsBroadcaster(bus));
     const sessionId = "test-git-session";
     watcher.setMode(sessionId, "push");
 
@@ -274,7 +277,8 @@ describe("SessionWatcher git_diff_stat buffering", () => {
       run: () => { throw new Error("not implemented"); },
     } as any;
 
-    const watcher = new SessionWatcher(mockAdapter);
+    const bus = new EventBus();
+    const watcher = new SessionWatcher(mockAdapter, bus, new WsBroadcaster(bus));
     const sessionId = "test-git-branch";
     watcher.setMode(sessionId, "push");
 
@@ -309,7 +313,8 @@ describe("SessionWatcher git_diff_stat buffering", () => {
       run: () => { throw new Error("not implemented"); },
     } as any;
 
-    const watcher = new SessionWatcher(mockAdapter);
+    const bus = new EventBus();
+    const watcher = new SessionWatcher(mockAdapter, bus, new WsBroadcaster(bus));
     const sessionId = "test-git-clear";
     watcher.setMode(sessionId, "push");
 

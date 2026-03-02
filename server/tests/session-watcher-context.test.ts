@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { NormalizedMessage, ProviderAdapter, PaginatedMessages } from "../src/providers/types.js";
 import { SessionWatcher } from "../src/session-watcher.js";
+import { EventBus } from "../src/event-bus.js";
+import { WsBroadcaster } from "../src/ws-broadcaster.js";
 
 // ── Helpers ──
 
@@ -52,7 +54,9 @@ describe("SessionWatcher context state buffering", () => {
   let watcher: SessionWatcher;
 
   beforeEach(() => {
-    watcher = new SessionWatcher(createMockAdapter());
+    const bus = new EventBus();
+    const broadcaster = new WsBroadcaster(bus);
+    watcher = new SessionWatcher(createMockAdapter(), bus, broadcaster);
   });
 
   it("buffers isCompacting and sends to late subscriber", async () => {

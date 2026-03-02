@@ -4,6 +4,15 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { NormalizedMessage, ProviderAdapter, PaginatedMessages } from "../src/providers/types.js";
 import { SessionWatcher } from "../src/session-watcher.js";
+import { EventBus } from "../src/event-bus.js";
+import { WsBroadcaster } from "../src/ws-broadcaster.js";
+
+/** Create a SessionWatcher with its required EventBus + WsBroadcaster dependencies. */
+function createWatcher(adapter: ProviderAdapter): SessionWatcher {
+  const bus = new EventBus();
+  const broadcaster = new WsBroadcaster(bus);
+  return new SessionWatcher(adapter, bus, broadcaster);
+}
 
 // ── Helpers ──
 
@@ -137,7 +146,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
@@ -165,7 +174,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
@@ -179,7 +188,7 @@ describe("SessionWatcher", () => {
     it("sends replay_complete when file path is not found", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe("nonexistent", ws as unknown as import("ws").WebSocket);
@@ -196,7 +205,7 @@ describe("SessionWatcher", () => {
     it("replays from memory when messages exist", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-mem";
       watcher.setMode(sessionId, "push");
@@ -224,7 +233,7 @@ describe("SessionWatcher", () => {
     it("respects messageLimit for in-memory replay", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-limit";
       watcher.setMode(sessionId, "push");
@@ -256,7 +265,7 @@ describe("SessionWatcher", () => {
     it("stores and broadcasts messages in push mode", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-push";
       watcher.setMode(sessionId, "push");
@@ -280,7 +289,7 @@ describe("SessionWatcher", () => {
     it("assigns sequential indices from messages.length", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-idx";
       watcher.setMode(sessionId, "push");
@@ -305,7 +314,7 @@ describe("SessionWatcher", () => {
     it("no-ops when session is not in push mode", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-nopush";
       watcher.setMode(sessionId, "idle");
@@ -323,7 +332,7 @@ describe("SessionWatcher", () => {
     it("no-ops for nonexistent session", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       // Should not throw
       watcher.pushMessage("nonexistent", { role: "assistant", parts: [{ type: "text", text: "hello" }], index: 0 });
@@ -335,7 +344,7 @@ describe("SessionWatcher", () => {
     it("broadcasts ephemeral events without storing", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-event";
       watcher.setMode(sessionId, "push");
@@ -364,7 +373,7 @@ describe("SessionWatcher", () => {
     it("no-ops for nonexistent session without throwing", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       // Should not throw
       watcher.pushEvent("nonexistent", { type: "status", status: "completed" });
@@ -374,7 +383,7 @@ describe("SessionWatcher", () => {
     it("works regardless of mode", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-event-idle";
       watcher.setMode(sessionId, "idle");
@@ -396,7 +405,7 @@ describe("SessionWatcher", () => {
     it("creates session entry if it does not exist", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       watcher.setMode("new-sess", "push");
       expect(watcher.watchedCount).toBe(1);
@@ -407,7 +416,7 @@ describe("SessionWatcher", () => {
     it("updates mode on existing session", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-mode";
       watcher.setMode(sessionId, "push");
@@ -438,7 +447,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       // Start in push mode
@@ -476,7 +485,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       // Start in push mode with messages already in memory
@@ -513,7 +522,7 @@ describe("SessionWatcher", () => {
     it("handles nonexistent session gracefully", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       // Should not throw
       await watcher.transitionToPoll("nonexistent");
@@ -529,7 +538,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const { ws, sent } = createMockWs();
@@ -553,7 +562,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50); // fast poll
 
       const { ws, sent } = createMockWs();
@@ -586,7 +595,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       watcher.setMode(sessionId, "push");
@@ -611,7 +620,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const { ws, sent } = createMockWs();
@@ -646,7 +655,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const client1 = createMockWs();
@@ -679,7 +688,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       // First client connects and receives replay (subscribe defaults to poll mode)
@@ -712,7 +721,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const { ws, sent } = createMockWs();
@@ -744,7 +753,7 @@ describe("SessionWatcher", () => {
     it("removes entry when last client leaves and no messages exist", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const { ws } = createMockWs();
       await watcher.subscribe("empty-sess", ws as unknown as import("ws").WebSocket);
@@ -763,7 +772,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const client1 = createMockWs();
@@ -792,7 +801,7 @@ describe("SessionWatcher", () => {
     it("returns true on successful remap", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       watcher.setMode("old-id", "push");
       const result = watcher.remap("old-id", "new-id");
@@ -812,7 +821,7 @@ describe("SessionWatcher", () => {
     it("returns false when old session does not exist", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const result = watcher.remap("nonexistent", "new-id");
       expect(result).toBe(false);
@@ -830,7 +839,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const { ws } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
@@ -850,7 +859,7 @@ describe("SessionWatcher", () => {
     it("no-ops for nonexistent session", () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       // Should not throw
       watcher.forceRemove("nonexistent");
@@ -868,7 +877,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       // First run: push mode
@@ -912,7 +921,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const { ws, sent } = createMockWs();
       await watcher.subscribe(sessionId, ws as unknown as import("ws").WebSocket);
@@ -931,7 +940,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const { ws, sent } = createMockWs();
@@ -960,7 +969,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const client1 = createMockWs();
@@ -992,7 +1001,7 @@ describe("SessionWatcher", () => {
 
       const fileMap = new Map([[sessionId, filePath]]);
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
 
       const { ws, sent } = createMockWs();
@@ -1020,7 +1029,7 @@ describe("SessionWatcher", () => {
     it("stop clears the interval", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
       watcher.start(50);
       watcher.stop();
       // Should be safe to call stop again
@@ -1031,7 +1040,7 @@ describe("SessionWatcher", () => {
       // Use sessions without files — entries are cleaned up on last unsubscribe
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const c1 = createMockWs();
       const c2 = createMockWs();
@@ -1053,7 +1062,7 @@ describe("SessionWatcher", () => {
     it("accumulates thinking_delta text and replays to late-connecting subscriber", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-thinking-buffer";
       watcher.setMode(sessionId, "push");
@@ -1076,7 +1085,7 @@ describe("SessionWatcher", () => {
     it("sends thinking_delta before replay_complete", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-thinking-order";
       watcher.setMode(sessionId, "push");
@@ -1098,7 +1107,7 @@ describe("SessionWatcher", () => {
     it("clears buffer when pushMessage receives assistant with reasoning part", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-clear-thinking";
       watcher.setMode(sessionId, "push");
@@ -1129,7 +1138,7 @@ describe("SessionWatcher", () => {
     it("does NOT clear buffer when assistant message lacks reasoning part", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-no-clear";
       watcher.setMode(sessionId, "push");
@@ -1157,7 +1166,7 @@ describe("SessionWatcher", () => {
     it("clears buffer on terminal status event (completed)", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-clear-on-complete";
       watcher.setMode(sessionId, "push");
@@ -1178,7 +1187,7 @@ describe("SessionWatcher", () => {
     it("clears buffer on terminal status event (error)", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-clear-on-error";
       watcher.setMode(sessionId, "push");
@@ -1198,7 +1207,7 @@ describe("SessionWatcher", () => {
     it("does not send thinking_delta to already-connected clients via replay", async () => {
       const fileMap = new Map<string, string>();
       const adapter = createMockAdapter(fileMap);
-      const watcher = new SessionWatcher(adapter);
+      const watcher = createWatcher(adapter);
 
       const sessionId = "sess-no-dup";
       watcher.setMode(sessionId, "push");

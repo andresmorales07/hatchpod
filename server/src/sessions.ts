@@ -5,6 +5,8 @@ import { SessionWatcher } from "./session-watcher.js";
 import { computeGitDiffStat } from "./git-status.js";
 import { updateCachedRateLimits } from "./rate-limits.js";
 import { randomUUID } from "node:crypto";
+import type { EventBus } from "./event-bus.js";
+import type { WsBroadcaster } from "./ws-broadcaster.js";
 
 // ── ActiveSession map (runtime handles for API-driven sessions) ──
 
@@ -40,14 +42,16 @@ setInterval(() => {
 // ── SessionWatcher singleton ──
 
 let watcher: SessionWatcher | null = null;
+let eventBus: EventBus | null = null;
 
 /**
  * Initialize the SessionWatcher singleton. Call once at server startup.
  * The adapter is used to resolve JSONL file paths and normalize lines.
  */
-export function initWatcher(adapter: ProviderAdapter): SessionWatcher {
+export function initWatcher(adapter: ProviderAdapter, bus: EventBus, broadcaster: WsBroadcaster): SessionWatcher {
   if (watcher) return watcher;
-  watcher = new SessionWatcher(adapter);
+  eventBus = bus;
+  watcher = new SessionWatcher(adapter, bus, broadcaster);
   watcher.start();
   return watcher;
 }
@@ -190,6 +194,8 @@ export async function createSession(
   };
 
   sessions.set(id, session);
+
+  eventBus?.emit({ type: "session.created", sessionId: id, cwd: session.cwd, model: session.model });
 
   if (hasPrompt) {
     runSession(session, req.prompt!, req.permissionMode ?? "default", req.model, req.allowedTools, req.resumeSessionId);

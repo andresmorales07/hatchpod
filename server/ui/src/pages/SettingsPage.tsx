@@ -7,6 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useAuthStore } from "@/stores/auth";
 import { formatResetTime } from "@/stores/messages";
 import type { RateLimitInfo } from "@/stores/messages";
+import { WebhookList } from "@/components/WebhookList";
+import { WebhookForm } from "@/components/WebhookForm";
+import type { Webhook } from "@/stores/webhooks";
 import { Moon, Sun, Terminal, Info, Bot, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +62,8 @@ export function SettingsPage() {
   const token = useAuthStore((s) => s.token);
   const [rateLimits, setRateLimits] = useState<CachedRateLimits | null>(null);
   const [rateLimitsLoading, setRateLimitsLoading] = useState(true);
+  const [webhookFormOpen, setWebhookFormOpen] = useState(false);
+  const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
 
   const fetchRateLimits = useCallback(async () => {
     try {
@@ -339,6 +344,17 @@ export function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Webhooks */}
+        <WebhookList
+          onEdit={(wh) => { setEditingWebhook(wh); setWebhookFormOpen(true); }}
+          onAdd={() => { setEditingWebhook(null); setWebhookFormOpen(true); }}
+        />
+        <WebhookForm
+          open={webhookFormOpen}
+          onClose={() => { setWebhookFormOpen(false); setEditingWebhook(null); }}
+          editing={editingWebhook}
+        />
 
         {/* About */}
         <Card>

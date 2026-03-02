@@ -19,6 +19,10 @@ async function getTerminalWs() {
 import { initWatcher } from "./sessions.js";
 import { getProvider } from "./providers/index.js";
 import { preloadSupportedModels } from "./providers/claude-adapter.js";
+import { eventBus } from "./event-bus.js";
+import { WsBroadcaster } from "./ws-broadcaster.js";
+import { WebhookRegistry } from "./webhooks.js";
+import { WebhookDispatcher } from "./webhook-dispatcher.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "public");
@@ -94,10 +98,28 @@ function serveIndex(
   res.end(html);
 }
 
+let webhookRegistry: WebhookRegistry | null = null;
+let webhookDispatcher: WebhookDispatcher | null = null;
+
+export function getWebhookRegistry(): WebhookRegistry {
+  if (!webhookRegistry) throw new Error("WebhookRegistry not initialized");
+  return webhookRegistry;
+}
+
+export function getWebhookDispatcher(): WebhookDispatcher {
+  if (!webhookDispatcher) throw new Error("WebhookDispatcher not initialized");
+  return webhookDispatcher;
+}
+
 export function createApp() {
   // Initialize the SessionWatcher with the default provider adapter.
   // This starts polling JSONL session files for new messages.
-  initWatcher(getProvider("claude"));
+  const broadcaster = new WsBroadcaster(eventBus);
+  initWatcher(getProvider("claude"), eventBus, broadcaster);
+
+  // Initialize webhook subsystem
+  webhookRegistry = new WebhookRegistry();
+  webhookDispatcher = new WebhookDispatcher(eventBus, webhookRegistry);
 
   // Probe the SDK for available models (fire-and-forget — cached in claude-adapter.ts).
   void preloadSupportedModels();

@@ -82,4 +82,12 @@ export type { GitFileStat, GitDiffStat } from "./git.js";
 export { SettingsSchema, PatchSettingsSchema, CLAUDE_MODELS, EFFORT_VALUES } from "./settings.js";
 export type { Settings } from "./settings.js";
 
+export {
+  WebhookSchema, CreateWebhookSchema, PatchWebhookSchema,
+  WEBHOOK_EVENT_TYPES,
+} from "./webhooks.js";
+export type {
+  Webhook, CreateWebhook, PatchWebhook, WebhookEventType,
+} from "./webhooks.js";
+
 export { openApiDocument } from "./registry.js";

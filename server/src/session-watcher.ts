@@ -4,6 +4,8 @@ import type { ProviderAdapter, NormalizedMessage, ToolSummary, PermissionModeCom
 import type { ServerMessage, ContextUsage } from "./types.js";
 import type { GitDiffStat } from "./schemas/git.js";
 import { computeGitDiffStat } from "./git-status.js";
+import type { EventBus } from "./event-bus.js";
+import type { WsBroadcaster } from "./ws-broadcaster.js";
 
 /**
  * Session delivery mode.
@@ -30,8 +32,6 @@ interface SubagentEntry {
 interface WatchedSession {
   /** In-memory message log — single source of truth for message history. */
   messages: NormalizedMessage[];
-  /** Subscribed WebSocket clients. */
-  clients: Set<WebSocket>;
   /** Delivery mode. */
   mode: SessionMode;
 
@@ -88,11 +88,15 @@ interface WatchedSession {
  */
 export class SessionWatcher {
   private adapter: ProviderAdapter;
+  private readonly bus: EventBus;
+  private readonly broadcaster: WsBroadcaster;
   private sessions = new Map<string, WatchedSession>();
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
 
-  constructor(adapter: ProviderAdapter) {
+  constructor(adapter: ProviderAdapter, bus: EventBus, broadcaster: WsBroadcaster) {
     this.adapter = adapter;
+    this.bus = bus;
+    this.broadcaster = broadcaster;
   }
 
   /** Number of sessions currently being watched. */
@@ -110,7 +114,7 @@ export class SessionWatcher {
     let watched = this.sessions.get(sessionId);
 
     if (watched) {
-      watched.clients.add(client);
+      this.broadcaster.addClient(sessionId, client);
       // Snapshot all buffers before any await — concurrent pushMessage() or
       // pushEvent() calls can mutate these during replayFromFile() suspension.
       const thinkingSnapshot = watched.pendingThinkingText;
@@ -140,7 +144,6 @@ export class SessionWatcher {
     // API sessions override this immediately via setMode("push") in runSession().
     watched = {
       messages: [],
-      clients: new Set([client]),
       mode: "poll",
       filePath: null,
       byteOffset: 0,
@@ -154,11 +157,12 @@ export class SessionWatcher {
       lastMode: null,
     };
     this.sessions.set(sessionId, watched);
+    this.broadcaster.addClient(sessionId, client);
 
     // Resolve file path via adapter (async)
     const filePath = await this.adapter.getSessionFilePath(sessionId);
     if (!filePath) {
-      this.send(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
+      this.broadcaster.sendToClient(client, { type: "replay_complete", totalMessages: 0, oldestIndex: 0 });
       return;
     }
 
@@ -182,20 +186,17 @@ export class SessionWatcher {
    * exist. Sessions with messages are preserved for reconnect replay.
    */
   unsubscribe(sessionId: string, client: WebSocket): void {
-    let watched = this.sessions.get(sessionId);
+    const watched = this.sessions.get(sessionId);
     if (!watched) {
-      // sessionId may be the old (pre-remap) ID — find by client reference
-      for (const w of this.sessions.values()) {
-        if (w.clients.has(client)) { watched = w; break; }
-      }
+      // sessionId may be the old (pre-remap) ID — find the session by checking
+      // WsBroadcaster's reverse map and remove the client from wherever it is.
+      this.broadcaster.removeClientFromAny(client);
+      return;
     }
-    if (!watched) return;
 
-    watched.clients.delete(client);
-    if (watched.clients.size === 0 && watched.messages.length === 0) {
-      for (const [key, w] of this.sessions) {
-        if (w === watched) { this.sessions.delete(key); break; }
-      }
+    this.broadcaster.removeClient(sessionId, client);
+    if (this.broadcaster.clientCount(sessionId) === 0 && watched.messages.length === 0) {
+      this.sessions.delete(sessionId);
     }
   }
 
@@ -211,6 +212,7 @@ export class SessionWatcher {
     }
     this.sessions.delete(oldId);
     this.sessions.set(newId, watched);
+    this.broadcaster.remapSession(oldId, newId);
     return true;
   }
 
@@ -219,6 +221,7 @@ export class SessionWatcher {
    * Called during TTL eviction to prevent unbounded memory growth.
    */
   forceRemove(sessionId: string): void {
+    this.broadcaster.removeSession(sessionId);
     this.sessions.delete(sessionId);
   }
 
@@ -249,7 +252,7 @@ export class SessionWatcher {
 
     const indexed = { ...message, index: watched.messages.length };
     watched.messages.push(indexed);
-    this.broadcast(watched, { type: "message", message: indexed });
+    this.bus.emit({ type: "message", sessionId, message: indexed });
   }
 
   /**
@@ -333,7 +336,7 @@ export class SessionWatcher {
       watched.lastGitDiffStat = null;
     }
 
-    this.broadcast(watched, event);
+    this.bus.emit({ type: "ephemeral", sessionId, event });
   }
 
   /**
@@ -345,7 +348,6 @@ export class SessionWatcher {
     if (!watched) {
       watched = {
         messages: [],
-        clients: new Set(),
         mode,
         filePath: null,
         byteOffset: 0,
@@ -442,20 +444,20 @@ export class SessionWatcher {
     const mode = overrides?.lastMode !== undefined ? overrides.lastMode : watched.lastMode;
 
     if (thinking) {
-      this.send(client, { type: "thinking_delta", text: thinking });
+      this.broadcaster.sendToClient(client, { type: "thinking_delta", text: thinking });
     }
     this.replaySubagentState(subagents, client);
     if (compacting) {
-      this.send(client, { type: "compacting", isCompacting: true });
+      this.broadcaster.sendToClient(client, { type: "compacting", isCompacting: true });
     }
     if (usage) {
-      this.send(client, { type: "context_usage", ...usage });
+      this.broadcaster.sendToClient(client, { type: "context_usage", ...usage });
     }
     if (diff) {
-      this.send(client, { type: "git_diff_stat", ...diff });
+      this.broadcaster.sendToClient(client, { type: "git_diff_stat", ...diff });
     }
     if (mode) {
-      this.send(client, { type: "mode_changed", mode });
+      this.broadcaster.sendToClient(client, { type: "mode_changed", mode });
     }
   }
 
@@ -485,7 +487,7 @@ export class SessionWatcher {
     const oldestIndex = page.length > 0 ? page[0].index : 0;
 
     for (const msg of page) {
-      this.send(client, { type: "message", message: msg });
+      this.broadcaster.sendToClient(client, { type: "message", message: msg });
     }
 
     this.sendBufferedState(client, watched, {
@@ -496,7 +498,7 @@ export class SessionWatcher {
       gitDiffStat,
       lastMode,
     });
-    this.send(client, {
+    this.broadcaster.sendToClient(client, {
       type: "replay_complete",
       totalMessages: total,
       oldestIndex,
@@ -530,7 +532,7 @@ export class SessionWatcher {
         gitDiffStat,
         lastMode,
       });
-      this.send(client, { type: "replay_complete", totalMessages, oldestIndex });
+      this.broadcaster.sendToClient(client, { type: "replay_complete", totalMessages, oldestIndex });
     };
 
     // No file to replay (e.g., test adapter) — just signal replay is done
@@ -559,14 +561,14 @@ export class SessionWatcher {
         finishReplay();
         return;
       }
-      this.send(client, { type: "error", message: "failed to load message history" });
+      this.broadcaster.sendToClient(client, { type: "error", message: "failed to load message history" });
       finishReplay();
       throw err;
     }
 
     // 1. Send messages to the client and populate in-memory store
     for (const msg of result.messages) {
-      this.send(client, { type: "message", message: msg });
+      this.broadcaster.sendToClient(client, { type: "message", message: msg });
       // Populate messages[] for future reconnects (only if empty to avoid duplication)
       if (watched.messages.length === 0 || watched.messages[watched.messages.length - 1].index < msg.index) {
         watched.messages.push(msg);
@@ -583,7 +585,7 @@ export class SessionWatcher {
 
     // 3. Send tasks if any non-completed tasks exist
     if (result.tasks.length > 0 && result.tasks.some((t) => t.status !== "completed")) {
-      this.send(client, { type: "tasks", tasks: result.tasks });
+      this.broadcaster.sendToClient(client, { type: "tasks", tasks: result.tasks });
     }
 
     // 4. Send buffered ephemeral state, then replay_complete
@@ -669,7 +671,7 @@ export class SessionWatcher {
       if (normalized) {
         const indexed = { ...normalized, index: watched.messages.length };
         watched.messages.push(indexed);
-        this.broadcast(watched, { type: "message", message: indexed });
+        this.bus.emit({ type: "message", sessionId, message: indexed });
 
         // Trigger git diff after tool_result messages (file may have changed)
         if (normalized.role === "user" && normalized.parts.some((p) => p.type === "tool_result")) {
@@ -695,7 +697,7 @@ export class SessionWatcher {
    */
   private replaySubagentState(subagentsSnapshot: ReadonlyMap<string, SubagentEntry>, client: WebSocket): void {
     for (const [toolUseId, sub] of subagentsSnapshot) {
-      this.send(client, {
+      this.broadcaster.sendToClient(client, {
         type: "subagent_started",
         taskId: sub.taskId,
         toolUseId,
@@ -704,7 +706,7 @@ export class SessionWatcher {
         ...(sub.agentType ? { agentType: sub.agentType } : {}),
       } as ServerMessage);
       for (const tc of sub.toolCalls) {
-        this.send(client, {
+        this.broadcaster.sendToClient(client, {
           type: "subagent_tool_call",
           toolUseId,
           toolName: tc.toolName,
@@ -714,30 +716,4 @@ export class SessionWatcher {
     }
   }
 
-  /** Send a message to a single WebSocket client. */
-  private send(client: WebSocket, msg: ServerMessage): void {
-    if (client.readyState !== 1) return;
-    try {
-      client.send(JSON.stringify(msg));
-    } catch (err) {
-      console.warn("SessionWatcher: failed to send to client:", (err as Error).message);
-    }
-  }
-
-  /** Broadcast a message to all clients of a watched session. */
-  private broadcast(watched: WatchedSession, msg: ServerMessage): void {
-    const payload = JSON.stringify(msg);
-    for (const client of watched.clients) {
-      if (client.readyState === 1) {
-        try {
-          client.send(payload);
-        } catch (err) {
-          console.warn("SessionWatcher: broadcast send failed, removing client:", (err as Error).message);
-          watched.clients.delete(client);
-        }
-      } else {
-        watched.clients.delete(client);
-      }
-    }
-  }
 }

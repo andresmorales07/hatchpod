@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionWatcher } from "../src/session-watcher.js";
 import type { ProviderAdapter } from "../src/providers/types.js";
+import { EventBus } from "../src/event-bus.js";
+import { WsBroadcaster } from "../src/ws-broadcaster.js";
 
 /** Minimal mock adapter. */
 function createMockAdapter(): ProviderAdapter {
@@ -27,15 +29,18 @@ function createMockWs(): any {
 
 describe("SessionWatcher subagent buffering", () => {
   let watcher: SessionWatcher;
+  let broadcaster: WsBroadcaster;
 
   beforeEach(() => {
-    watcher = new SessionWatcher(createMockAdapter());
+    const bus = new EventBus();
+    broadcaster = new WsBroadcaster(bus);
+    watcher = new SessionWatcher(createMockAdapter(), bus, broadcaster);
   });
 
   it("buffers subagent_started and broadcasts to clients", () => {
     const ws = createMockWs();
     watcher.setMode("s1", "push");
-    (watcher as any).sessions.get("s1")!.clients.add(ws);
+    broadcaster.addClient("s1", ws);
 
     watcher.pushEvent("s1", {
       type: "subagent_started",
@@ -65,7 +70,7 @@ describe("SessionWatcher subagent buffering", () => {
     ]);
 
     const ws = createMockWs();
-    watched.clients.add(ws);
+    broadcaster.addClient("s1", ws);
 
     watcher.pushEvent("s1", {
       type: "subagent_tool_call",
@@ -87,7 +92,7 @@ describe("SessionWatcher subagent buffering", () => {
     ]);
 
     const ws = createMockWs();
-    watched.clients.add(ws);
+    broadcaster.addClient("s1", ws);
 
     watcher.pushEvent("s1", {
       type: "subagent_completed",
@@ -203,7 +208,7 @@ describe("SessionWatcher subagent buffering", () => {
   it("handles parallel subagents independently", () => {
     watcher.setMode("s1", "push");
     const ws = createMockWs();
-    (watcher as any).sessions.get("s1")!.clients.add(ws);
+    broadcaster.addClient("s1", ws);
 
     // Start two subagents
     watcher.pushEvent("s1", { type: "subagent_started", taskId: "t1", toolUseId: "tu1", description: "Agent 1" });

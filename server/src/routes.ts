@@ -11,17 +11,22 @@ import {
 } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
 import { getCachedModels } from "./providers/claude-adapter.js";
-import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument, PatchSettingsSchema } from "./schemas/index.js";
+import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument, PatchSettingsSchema, CreateWebhookSchema, PatchWebhookSchema } from "./schemas/index.js";
 import { computeGitDiffStat } from "./git-status.js";
 import { SERVER_VERSION } from "./version.js";
 import { readSettings, writeSettings } from "./settings.js";
 import { getCachedRateLimits } from "./rate-limits.js";
+import { getWebhookRegistry, getWebhookDispatcher } from "./index.js";
 
 const startTime = Date.now();
 
 const SESSION_ID_RE = /^\/api\/sessions\/([0-9a-f-]{36})$/;
 const SESSION_HISTORY_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/history$/;
 const SESSION_MESSAGES_RE = /^\/api\/sessions\/([0-9a-f-]{36})\/messages$/;
+
+const WEBHOOK_RE = /^\/api\/webhooks$/;
+const WEBHOOK_ID_RE = /^\/api\/webhooks\/([0-9a-f-]{36})$/;
+const WEBHOOK_TEST_RE = /^\/api\/webhooks\/([0-9a-f-]{36})\/test$/;
 
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
 const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
@@ -444,6 +449,99 @@ export async function handleRequest(
         console.error("Failed to write settings:", err);
         json(res, 500, { error: "internal server error" });
       }
+    }
+    return;
+  }
+
+  // --- Webhooks ---
+
+  // GET /api/webhooks
+  if (WEBHOOK_RE.test(pathname) && method === "GET") {
+    const registry = getWebhookRegistry();
+    json(res, 200, await registry.list());
+    return;
+  }
+
+  // POST /api/webhooks
+  if (WEBHOOK_RE.test(pathname) && method === "POST") {
+    let raw: unknown;
+    try {
+      const body = await readBody(req);
+      raw = JSON.parse(body);
+    } catch (err) {
+      const msg = err instanceof Error && err.message === "request body too large"
+        ? "request body too large"
+        : "invalid request body";
+      json(res, 400, { error: msg });
+      return;
+    }
+    const parsed = CreateWebhookSchema.safeParse(raw);
+    if (!parsed.success) {
+      json(res, 400, { error: parsed.error.issues[0].message });
+      return;
+    }
+    const registry = getWebhookRegistry();
+    const webhook = await registry.create(parsed.data);
+    json(res, 201, webhook);
+    return;
+  }
+
+  // PATCH /api/webhooks/:id
+  const webhookIdMatch = pathname.match(WEBHOOK_ID_RE);
+  if (webhookIdMatch && method === "PATCH") {
+    let raw: unknown;
+    try {
+      const body = await readBody(req);
+      raw = JSON.parse(body);
+    } catch (err) {
+      const msg = err instanceof Error && err.message === "request body too large"
+        ? "request body too large"
+        : "invalid request body";
+      json(res, 400, { error: msg });
+      return;
+    }
+    const parsed = PatchWebhookSchema.safeParse(raw);
+    if (!parsed.success) {
+      json(res, 400, { error: parsed.error.issues[0].message });
+      return;
+    }
+    const registry = getWebhookRegistry();
+    try {
+      const updated = await registry.update(webhookIdMatch[1], parsed.data);
+      json(res, 200, updated);
+    } catch {
+      json(res, 404, { error: "webhook not found" });
+    }
+    return;
+  }
+
+  // DELETE /api/webhooks/:id
+  if (webhookIdMatch && method === "DELETE") {
+    const registry = getWebhookRegistry();
+    try {
+      await registry.remove(webhookIdMatch[1]);
+      res.writeHead(204);
+      res.end();
+    } catch {
+      json(res, 404, { error: "webhook not found" });
+    }
+    return;
+  }
+
+  // POST /api/webhooks/:id/test
+  const webhookTestMatch = pathname.match(WEBHOOK_TEST_RE);
+  if (webhookTestMatch && method === "POST") {
+    const webhookId = webhookTestMatch[1];
+    const exists = await getWebhookRegistry().getById(webhookId);
+    if (!exists) {
+      json(res, 404, { error: "webhook not found" });
+      return;
+    }
+    try {
+      await getWebhookDispatcher().sendTest(webhookId);
+      json(res, 200, { ok: true });
+    } catch (err) {
+      json(res, 502, { error: (err as Error).message });
     }
     return;
   }
