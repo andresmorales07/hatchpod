@@ -1,10 +1,26 @@
 #!/bin/bash
 set -e
 
-# Generate SSH host keys if missing
-if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+# SSH host key persistence — store on the home volume so the fingerprint
+# survives container recreation (avoids "host verification failed" errors).
+HOST_KEY_STORE=/home/hatchpod/.ssh/host_keys
+mkdir -p "$HOST_KEY_STORE"
+
+if ls "$HOST_KEY_STORE"/ssh_host_*_key 2>/dev/null | grep -q .; then
+    # Restore persisted host keys to /etc/ssh
+    cp "$HOST_KEY_STORE"/ssh_host_*_key /etc/ssh/
+    cp "$HOST_KEY_STORE"/ssh_host_*_key.pub /etc/ssh/
+else
+    # First boot: generate fresh host keys and persist them
     ssh-keygen -A
+    cp /etc/ssh/ssh_host_*_key "$HOST_KEY_STORE/"
+    cp /etc/ssh/ssh_host_*_key.pub "$HOST_KEY_STORE/"
 fi
+
+# Ensure correct ownership and permissions on the active keys
+chown root:root /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_*_key.pub
+chmod 600 /etc/ssh/ssh_host_*_key
+chmod 644 /etc/ssh/ssh_host_*_key.pub
 
 # Backward compat: honor old env var name with deprecation warning
 if [ -z "$SSH_PASSWORD" ] && [ -n "$CLAUDE_USER_PASSWORD" ]; then
