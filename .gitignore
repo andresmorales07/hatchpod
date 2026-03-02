@@ -27,5 +27,6 @@ server/public/
 # Worktrees
 .worktrees/
 
-# Serena
-.serena/
+# Serena (memories and cache are local; project.yml is tracked)
+.serena/*
+!.serena/project.yml
