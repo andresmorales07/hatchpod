@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { homedir } from "node:os";
 import { authenticateRequest, sendUnauthorized, sendRateLimited } from "./auth.js";
 import {
   listSessionsWithHistory,
@@ -11,12 +12,12 @@ import {
 } from "./sessions.js";
 import { listProviders, getProvider } from "./providers/index.js";
 import { getCachedModels } from "./providers/claude-adapter.js";
-import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument, PatchSettingsSchema, CreateWebhookSchema, PatchWebhookSchema } from "./schemas/index.js";
+import { CreateSessionRequestSchema, UuidSchema, isPathContained, openApiDocument, PatchSettingsSchema, CreateWebhookSchema, PatchWebhookSchema, HookConfigSchema } from "./schemas/index.js";
 import { computeGitDiffStat } from "./git-status.js";
 import { SERVER_VERSION } from "./version.js";
 import { readSettings, writeSettings } from "./settings.js";
 import { getCachedRateLimits } from "./rate-limits.js";
-import { getWebhookRegistry, getWebhookDispatcher } from "./index.js";
+import { getWebhookRegistry, getWebhookDispatcher, getClaudeHooksService } from "./index.js";
 
 const startTime = Date.now();
 
@@ -28,7 +29,12 @@ const WEBHOOK_RE = /^\/api\/webhooks$/;
 const WEBHOOK_ID_RE = /^\/api\/webhooks\/([0-9a-f-]{36})$/;
 const WEBHOOK_TEST_RE = /^\/api\/webhooks\/([0-9a-f-]{36})\/test$/;
 
+const CLAUDE_HOOKS_USER_RE = /^\/api\/claude-hooks\/user$/;
+const CLAUDE_HOOKS_WORKSPACE_RE = /^\/api\/claude-hooks\/workspace$/;
+const WORKSPACES_RE = /^\/api\/workspaces$/;
+
 const BROWSE_ROOT = process.env.BROWSE_ROOT ?? process.cwd();
+const HOME_DIR = homedir();
 const ALLOW_BYPASS_PERMISSIONS = process.env.ALLOW_BYPASS_PERMISSIONS === "1";
 
 const SCALAR_HTML = `<!doctype html>
@@ -542,6 +548,118 @@ export async function handleRequest(
       json(res, 200, { ok: true });
     } catch (err) {
       json(res, 502, { error: (err as Error).message });
+    }
+    return;
+  }
+
+  // --- Claude Hooks ---
+
+  // GET /api/claude-hooks/user
+  if (CLAUDE_HOOKS_USER_RE.test(pathname) && method === "GET") {
+    try {
+      const hooks = await getClaudeHooksService().readHooks("user");
+      json(res, 200, hooks);
+    } catch (err) {
+      console.error("Failed to read user hooks:", err);
+      json(res, 500, { error: "internal server error" });
+    }
+    return;
+  }
+
+  // PUT /api/claude-hooks/user
+  if (CLAUDE_HOOKS_USER_RE.test(pathname) && method === "PUT") {
+    let raw: unknown;
+    try {
+      const body = await readBody(req);
+      raw = JSON.parse(body);
+    } catch (err) {
+      const msg = err instanceof Error && err.message === "request body too large"
+        ? "request body too large"
+        : "invalid request body";
+      json(res, 400, { error: msg });
+      return;
+    }
+    const parsed = HookConfigSchema.safeParse(raw);
+    if (!parsed.success) {
+      json(res, 400, { error: parsed.error.issues[0].message });
+      return;
+    }
+    try {
+      await getClaudeHooksService().writeHooks("user", parsed.data);
+      json(res, 200, parsed.data);
+    } catch (err) {
+      console.error("Failed to write user hooks:", err);
+      json(res, 500, { error: "internal server error" });
+    }
+    return;
+  }
+
+  // GET /api/claude-hooks/workspace?path=X
+  if (CLAUDE_HOOKS_WORKSPACE_RE.test(pathname) && method === "GET") {
+    const path = url.searchParams.get("path");
+    if (!path) {
+      json(res, 400, { error: "path query parameter is required" });
+      return;
+    }
+    if (!isPathContained(HOME_DIR, path)) {
+      json(res, 403, { error: "path traversal denied" });
+      return;
+    }
+    try {
+      const hooks = await getClaudeHooksService().readHooks("workspace", path);
+      json(res, 200, hooks);
+    } catch (err) {
+      console.error("Failed to read workspace hooks:", err);
+      json(res, 500, { error: "internal server error" });
+    }
+    return;
+  }
+
+  // PUT /api/claude-hooks/workspace?path=X
+  if (CLAUDE_HOOKS_WORKSPACE_RE.test(pathname) && method === "PUT") {
+    const path = url.searchParams.get("path");
+    if (!path) {
+      json(res, 400, { error: "path query parameter is required" });
+      return;
+    }
+    if (!isPathContained(HOME_DIR, path)) {
+      json(res, 403, { error: "path traversal denied" });
+      return;
+    }
+    let raw: unknown;
+    try {
+      const body = await readBody(req);
+      raw = JSON.parse(body);
+    } catch (err) {
+      const msg = err instanceof Error && err.message === "request body too large"
+        ? "request body too large"
+        : "invalid request body";
+      json(res, 400, { error: msg });
+      return;
+    }
+    const parsed = HookConfigSchema.safeParse(raw);
+    if (!parsed.success) {
+      json(res, 400, { error: parsed.error.issues[0].message });
+      return;
+    }
+    try {
+      await getClaudeHooksService().writeHooks("workspace", parsed.data, path);
+      json(res, 200, parsed.data);
+    } catch (err) {
+      console.error("Failed to write workspace hooks:", err);
+      json(res, 500, { error: "internal server error" });
+    }
+    return;
+  }
+
+  // GET /api/workspaces
+  if (WORKSPACES_RE.test(pathname) && method === "GET") {
+    try {
+      const workspaces = await getClaudeHooksService().listWorkspaces();
+      json(res, 200, workspaces);
+    } catch (err) {
+      console.error("Failed to list workspaces:", err);
+      json(res, 500, { error: "internal server error" });
     }
     return;
   }

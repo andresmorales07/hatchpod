@@ -23,6 +23,7 @@ import { eventBus } from "./event-bus.js";
 import { WsBroadcaster } from "./ws-broadcaster.js";
 import { WebhookRegistry } from "./webhooks.js";
 import { WebhookDispatcher } from "./webhook-dispatcher.js";
+import { ClaudeHooksService } from "./claude-hooks.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "public");
@@ -100,6 +101,7 @@ function serveIndex(
 
 let webhookRegistry: WebhookRegistry | null = null;
 let webhookDispatcher: WebhookDispatcher | null = null;
+let claudeHooksService: ClaudeHooksService | null = null;
 
 export function getWebhookRegistry(): WebhookRegistry {
   if (!webhookRegistry) throw new Error("WebhookRegistry not initialized");
@@ -111,6 +113,11 @@ export function getWebhookDispatcher(): WebhookDispatcher {
   return webhookDispatcher;
 }
 
+export function getClaudeHooksService(): ClaudeHooksService {
+  if (!claudeHooksService) throw new Error("ClaudeHooksService not initialized");
+  return claudeHooksService;
+}
+
 export function createApp() {
   // Initialize the SessionWatcher with the default provider adapter.
   // This starts polling JSONL session files for new messages.
@@ -120,6 +127,9 @@ export function createApp() {
   // Initialize webhook subsystem
   webhookRegistry = new WebhookRegistry();
   webhookDispatcher = new WebhookDispatcher(eventBus, webhookRegistry);
+
+  // Initialize Claude hooks service
+  claudeHooksService = new ClaudeHooksService();
 
   // Probe the SDK for available models (fire-and-forget — cached in claude-adapter.ts).
   void preloadSupportedModels();
