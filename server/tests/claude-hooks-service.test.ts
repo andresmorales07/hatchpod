@@ -83,6 +83,13 @@ describe("ClaudeHooksService", () => {
       expect(result).toEqual({});
     });
 
+    it("throws on unexpected I/O errors (non-ENOENT)", async () => {
+      // Simulate an EACCES-style error by making the .claude dir a file
+      await writeFile(join(tmpDir, ".claude"), "not-a-directory");
+
+      await expect(service.readHooks("user")).rejects.toThrow();
+    });
+
     it("reads workspace-scoped hooks", async () => {
       const workspaceDir = join(tmpDir, "my-project");
       const settingsDir = join(workspaceDir, ".claude");
@@ -373,6 +380,25 @@ describe("ClaudeHooksService", () => {
       }
     });
 
+    it("calling watchFile twice on the same path replaces the first watcher", async () => {
+      const settingsDir = join(tmpDir, ".claude");
+      await mkdir(settingsDir, { recursive: true });
+      const filePath = join(settingsDir, "settings.json");
+      await writeFile(filePath, "{}");
+
+      const cb1 = vi.fn();
+      const cb2 = vi.fn();
+      service.watchFile(filePath, cb1);
+      service.watchFile(filePath, cb2); // replaces cb1's watcher
+
+      await writeFile(filePath, JSON.stringify({ v: 1 }));
+      await new Promise((r) => setTimeout(r, 800));
+
+      // Only cb2 should fire — cb1's watcher was replaced
+      expect(cb2).toHaveBeenCalled();
+      expect(cb1).not.toHaveBeenCalled();
+    });
+
     it("debounces rapid changes into single callback", async () => {
       const settingsDir = join(tmpDir, ".claude");
       await mkdir(settingsDir, { recursive: true });
@@ -401,22 +427,21 @@ describe("ClaudeHooksService", () => {
   });
 
   describe("unwatchAll", () => {
-    it("closes all active watchers", async () => {
+    it("stops callbacks from firing after unwatchAll", async () => {
       const settingsDir = join(tmpDir, ".claude");
       await mkdir(settingsDir, { recursive: true });
-      const file1 = join(settingsDir, "settings.json");
-      const file2 = join(settingsDir, "other.json");
-      await writeFile(file1, "{}");
-      await writeFile(file2, "{}");
+      const filePath = join(settingsDir, "settings.json");
+      await writeFile(filePath, "{}");
 
-      service.watchFile(file1, () => {});
-      service.watchFile(file2, () => {});
-
-      // Should not throw
+      const cb = vi.fn();
+      service.watchFile(filePath, cb);
       service.unwatchAll();
 
-      // Modifying files after unwatchAll should not trigger callbacks
-      // (no way to directly verify watchers are closed, but this confirms no errors)
+      // Write after unwatchAll — callback must not fire
+      await writeFile(filePath, JSON.stringify({ v: 1 }));
+      await new Promise((r) => setTimeout(r, 800));
+
+      expect(cb).not.toHaveBeenCalled();
     });
   });
 });

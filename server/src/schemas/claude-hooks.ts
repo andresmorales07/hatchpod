@@ -3,7 +3,7 @@ import { z } from "zod";
 export const CommandHookSchema = z.object({
   type: z.literal("command"),
   command: z.string().min(1),
-  timeout: z.number().positive().optional(),
+  timeout: z.number().int().positive().optional(),
   async: z.boolean().optional(),
   statusMessage: z.string().optional(),
 });
@@ -13,7 +13,7 @@ export const HttpHookSchema = z.object({
   url: z.string().url(),
   headers: z.record(z.string(), z.string()).optional(),
   allowedEnvVars: z.array(z.string()).optional(),
-  timeout: z.number().positive().optional(),
+  timeout: z.number().int().positive().optional(),
   statusMessage: z.string().optional(),
 });
 
@@ -24,7 +24,7 @@ export const HookHandlerSchema = z.discriminatedUnion("type", [
 
 export const MatcherGroupSchema = z.object({
   matcher: z.string().optional(),
-  hooks: z.array(HookHandlerSchema),
+  hooks: z.array(HookHandlerSchema).min(1),
 });
 
 export const HOOK_EVENT_NAMES = [

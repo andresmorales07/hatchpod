@@ -15,6 +15,7 @@ import {
   SessionListItemSchema,
   CachedRateLimitResponseSchema,
 } from "./providers.js";
+import { MatcherGroupSchema, WorkspaceInfoSchema } from "./claude-hooks.js";
 import {
   CreateSessionRequestSchema,
   CreateSessionResponseSchema,
@@ -575,6 +576,112 @@ registry.registerPath({
       description: "Webhook delivery failed",
       content: { "application/json": { schema: ErrorResponseSchema } },
     },
+  },
+});
+
+// --- Claude Hooks ---
+
+registry.registerPath({
+  method: "get",
+  path: "/api/claude-hooks/user",
+  summary: "Get user-level hook config",
+  description: "Returns the Claude Code hook configuration from ~/.claude/settings.json.",
+  tags: ["Claude Hooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: {
+      description: "User hook configuration",
+      content: { "application/json": { schema: z.record(z.string(), z.array(MatcherGroupSchema)) } },
+    },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorResponseSchema } } },
+    500: { description: "Internal server error", content: { "application/json": { schema: ErrorResponseSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/claude-hooks/user",
+  summary: "Save user-level hook config",
+  description: "Writes the Claude Code hook configuration to ~/.claude/settings.json. Preserves all other settings fields.",
+  tags: ["Claude Hooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    body: { content: { "application/json": { schema: z.record(z.string(), z.array(MatcherGroupSchema)) } } },
+  },
+  responses: {
+    200: {
+      description: "Updated hook configuration",
+      content: { "application/json": { schema: z.record(z.string(), z.array(MatcherGroupSchema)) } },
+    },
+    400: { description: "Validation error", content: { "application/json": { schema: ErrorResponseSchema } } },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorResponseSchema } } },
+    500: { description: "Internal server error", content: { "application/json": { schema: ErrorResponseSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/claude-hooks/workspace",
+  summary: "Get workspace-level hook config",
+  description: "Returns the Claude Code hook configuration from <path>/.claude/settings.json.",
+  tags: ["Claude Hooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    query: z.object({
+      path: z.string().openapi({ description: "Absolute path to the workspace directory" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Workspace hook configuration",
+      content: { "application/json": { schema: z.record(z.string(), z.array(MatcherGroupSchema)) } },
+    },
+    400: { description: "Missing path parameter", content: { "application/json": { schema: ErrorResponseSchema } } },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorResponseSchema } } },
+    403: { description: "Path traversal attempt", content: { "application/json": { schema: ErrorResponseSchema } } },
+    500: { description: "Internal server error", content: { "application/json": { schema: ErrorResponseSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/api/claude-hooks/workspace",
+  summary: "Save workspace-level hook config",
+  description: "Writes the Claude Code hook configuration to <path>/.claude/settings.json. Preserves all other settings fields.",
+  tags: ["Claude Hooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    query: z.object({
+      path: z.string().openapi({ description: "Absolute path to the workspace directory" }),
+    }),
+    body: { content: { "application/json": { schema: z.record(z.string(), z.array(MatcherGroupSchema)) } } },
+  },
+  responses: {
+    200: {
+      description: "Updated hook configuration",
+      content: { "application/json": { schema: z.record(z.string(), z.array(MatcherGroupSchema)) } },
+    },
+    400: { description: "Validation error or missing path", content: { "application/json": { schema: ErrorResponseSchema } } },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorResponseSchema } } },
+    403: { description: "Path traversal attempt", content: { "application/json": { schema: ErrorResponseSchema } } },
+    500: { description: "Internal server error", content: { "application/json": { schema: ErrorResponseSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/workspaces",
+  summary: "List known workspaces",
+  description: "Returns unique working directories derived from Claude Code session history, sorted by session count.",
+  tags: ["Claude Hooks"],
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: {
+      description: "List of known workspaces",
+      content: { "application/json": { schema: z.array(WorkspaceInfoSchema) } },
+    },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorResponseSchema } } },
+    500: { description: "Internal server error", content: { "application/json": { schema: ErrorResponseSchema } } },
   },
 });
 

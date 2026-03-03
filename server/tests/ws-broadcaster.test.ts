@@ -167,6 +167,39 @@ describe("WsBroadcaster", () => {
     expect(ws._messages).toHaveLength(0);
   });
 
+  it("broadcastGlobal sends to all clients across all sessions", () => {
+    const ws1 = createMockWs();
+    const ws2 = createMockWs();
+    const ws3 = createMockWs();
+    broadcaster.addClient("s1", ws1);
+    broadcaster.addClient("s1", ws2);
+    broadcaster.addClient("s2", ws3);
+
+    const msg: ServerMessage = { type: "claude_hooks_changed", scope: "user" };
+    broadcaster.broadcastGlobal(msg);
+
+    expect(ws1._messages).toHaveLength(1);
+    expect(ws1._messages[0]).toEqual(msg);
+    expect(ws2._messages).toHaveLength(1);
+    expect(ws2._messages[0]).toEqual(msg);
+    expect(ws3._messages).toHaveLength(1);
+    expect(ws3._messages[0]).toEqual(msg);
+  });
+
+  it("broadcastGlobal skips and removes clients with non-OPEN readyState", () => {
+    const ws1 = createMockWs();
+    const ws2 = { ...createMockWs(), readyState: 3 }; // CLOSED
+    broadcaster.addClient("s1", ws1);
+    broadcaster.addClient("s1", ws2);
+
+    broadcaster.broadcastGlobal({ type: "ping" });
+
+    expect(ws1._messages).toHaveLength(1);
+    expect(ws2.send).not.toHaveBeenCalled();
+    // ws2 should have been removed from the client set
+    expect(broadcaster.clientCount("s1")).toBe(1);
+  });
+
   it("stop() unsubscribes from EventBus", () => {
     const ws = createMockWs();
     broadcaster.addClient("s1", ws);

@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir, unlink } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -10,6 +10,8 @@ import { listAllSessionHistory } from "./session-history.js";
 export class ClaudeHooksService {
   private watchers = new Map<string, FSWatcher>();
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Per-file write locks: serializes concurrent read-modify-write operations. */
+  private writeLocks = new Map<string, Promise<void>>();
 
   constructor(private readonly homeDir: string = homedir()) {}
 
@@ -31,6 +33,7 @@ export class ClaudeHooksService {
   /**
    * Read hooks configuration from a settings file.
    * Returns {} if the file doesn't exist, has no hooks field, or has invalid hooks.
+   * Throws for unexpected I/O errors (e.g., EACCES) so callers can surface them as 500.
    */
   async readHooks(scope: "user" | "workspace", path?: string): Promise<HookConfig> {
     const filePath = this.resolveSettingsPath(scope, path);
@@ -38,8 +41,9 @@ export class ClaudeHooksService {
     let raw: string;
     try {
       raw = await readFile(filePath, "utf-8");
-    } catch {
-      return {};
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw err;
     }
 
     let parsed: Record<string, unknown>;
@@ -61,38 +65,56 @@ export class ClaudeHooksService {
    * Write hooks configuration to a settings file.
    * Preserves all non-hook fields in the existing file.
    * Uses atomic write (temp file + rename) to prevent corruption.
+   * Serializes concurrent writes per-file to prevent TOCTOU lost-update races.
    */
   async writeHooks(scope: "user" | "workspace", hooks: HookConfig, path?: string): Promise<void> {
     const filePath = this.resolveSettingsPath(scope, path);
-
-    // Read existing file content to preserve non-hook fields
-    let existing: Record<string, unknown> = {};
-    try {
-      const raw = await readFile(filePath, "utf-8");
+    return this.withWriteLock(filePath, async () => {
+      // Read existing file content to preserve non-hook fields
+      let existing: Record<string, unknown> = {};
       try {
-        existing = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        throw new Error(`Settings file contains invalid JSON: ${filePath}`);
+        const raw = await readFile(filePath, "utf-8");
+        try {
+          existing = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          throw new Error(`Settings file contains invalid JSON: ${filePath}`);
+        }
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        // ENOENT — file doesn't exist yet, we'll create it
       }
-    } catch (err) {
-      // If the error is our own invalid-JSON error, re-throw it
-      if (err instanceof Error && err.message.startsWith("Settings file contains invalid JSON")) {
+
+      // Merge: preserve existing fields, set hooks
+      const merged = { ...existing, hooks };
+
+      // Ensure the directory exists
+      const dir = dirname(filePath);
+      await mkdir(dir, { recursive: true });
+
+      // Atomic write: temp file + rename. Clean up temp on failure.
+      const tmp = `${filePath}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(tmp, JSON.stringify(merged, null, 2));
+        await rename(tmp, filePath);
+      } catch (err) {
+        await unlink(tmp).catch(() => {});
         throw err;
       }
-      // File doesn't exist — that's fine, we'll create it
-    }
+    });
+  }
 
-    // Merge: preserve existing fields, set hooks
-    const merged = { ...existing, hooks };
-
-    // Ensure the directory exists
-    const dir = dirname(filePath);
-    await mkdir(dir, { recursive: true });
-
-    // Atomic write: temp file + rename
-    const tmp = `${filePath}.${randomUUID()}.tmp`;
-    await writeFile(tmp, JSON.stringify(merged, null, 2));
-    await rename(tmp, filePath);
+  /** Serializes write operations per file path to prevent TOCTOU lost-update races. */
+  private withWriteLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeLocks.get(filePath) ?? Promise.resolve();
+    let resolve!: () => void;
+    const next = new Promise<void>((r) => { resolve = r; });
+    this.writeLocks.set(filePath, next);
+    return prev.then(fn).finally(() => {
+      resolve();
+      if (this.writeLocks.get(filePath) === next) {
+        this.writeLocks.delete(filePath);
+      }
+    });
   }
 
   /**
@@ -121,7 +143,9 @@ export class ClaudeHooksService {
   /**
    * Watch a settings file for changes.
    * Calls the callback when the file is modified, debounced by 500ms.
-   * Handles ENOENT gracefully (file might be deleted).
+   * ENOENT on initial watch (file doesn't exist yet) returns a no-op unsubscribe.
+   * ENOENT on the watcher error event (file was deleted) cleans up silently.
+   * All other watcher errors close the watcher and log a warning.
    * Returns an unsubscribe function that stops watching.
    */
   watchFile(filePath: string, callback: () => void): () => void {
@@ -163,18 +187,17 @@ export class ClaudeHooksService {
 
     watcher.on("error", (err) => {
       const code = (err as NodeJS.ErrnoException)?.code;
-      if (code === "ENOENT") {
-        // File was deleted — clean up silently
-        watcher.close();
-        this.watchers.delete(filePath);
-        const timer = this.debounceTimers.get(filePath);
-        if (timer) {
-          clearTimeout(timer);
-          this.debounceTimers.delete(filePath);
-        }
-        return;
+      // Always close the watcher on any error to prevent resource leaks and log spam.
+      watcher.close();
+      this.watchers.delete(filePath);
+      const timer = this.debounceTimers.get(filePath);
+      if (timer) {
+        clearTimeout(timer);
+        this.debounceTimers.delete(filePath);
       }
-      console.warn(`File watcher error for ${filePath}:`, err);
+      if (code !== "ENOENT") {
+        console.warn(`File watcher error for ${filePath}:`, err);
+      }
     });
 
     this.watchers.set(filePath, watcher);

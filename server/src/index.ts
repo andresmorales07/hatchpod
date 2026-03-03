@@ -265,4 +265,11 @@ if (isDirectRun || process.env.HATCHPOD_AUTO_LISTEN === "1") {
   server.listen(PORT, HOST, () => {
     console.log(`hatchpod API server listening on ${HOST}:${PORT}`);
   });
+
+  // Graceful shutdown: release file watchers and debounce timers so Node can exit cleanly.
+  process.once("SIGTERM", () => {
+    claudeHooksService?.unwatchAll();
+    webhookDispatcher?.stop();
+    server.close(() => process.exit(0));
+  });
 }

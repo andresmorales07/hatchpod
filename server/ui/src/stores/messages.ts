@@ -537,9 +537,17 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
             set({ lastError: msg.message });
             break;
           case "claude_hooks_changed":
-            import("./claude-hooks.js").then(({ useClaudeHooksStore }) => {
-              useClaudeHooksStore.getState().fetchHooks();
-            });
+            import("./claude-hooks.js")
+              .then(({ useClaudeHooksStore }) => {
+                const store = useClaudeHooksStore.getState();
+                // Only refetch if the change scope matches the currently displayed scope.
+                if (store.scope === msg.scope) {
+                  void store.fetchHooks();
+                }
+              })
+              .catch((err: unknown) => {
+                console.error("Failed to load claude-hooks module:", err);
+              });
             break;
         }
       };
